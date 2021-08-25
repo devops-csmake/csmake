@@ -14,8 +14,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # </copyright>
-from Result import Result
-from Reporter import AspectReporter, NonChattyReporter
+from .Result import Result
+from .Reporter import AspectReporter, NonChattyReporter
 
 class AspectResult(Result):
 

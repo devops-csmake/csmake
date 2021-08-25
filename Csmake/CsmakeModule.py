@@ -51,7 +51,7 @@ class CsmakeModule:
     def __del__(self):
         try:
             if hasattr(self, exitCallbackIds):
-                for callbackId in exitCallbackIds.values():
+                for callbackId in list(exitCallbackIds.values()):
                     try:
                         self.engine.unregisterBuildExitCallback(callbackId)
                     except:
@@ -89,7 +89,7 @@ class CsmakeModule:
 
     def _unregisterOtherClassOnExitCallback(self, classname, method, ident=None):
         key = ("%s%%%s" % (classname, method), ident)
-        self.log.devdebug("callbacks unregistering: %s", self.exitCallbacks.keys())
+        self.log.devdebug("callbacks unregistering: %s", list(self.exitCallbacks.keys()))
         self.exitCallbacksLock.acquire()
         try:
             regids = self.exitCallbacks[key]
@@ -130,7 +130,7 @@ class CsmakeModule:
         self.originalOptions = list(options)
         required = list(self.__class__.REQUIRED_OPTIONS)
         errors = False
-        for key, value in options.iteritems():
+        for key, value in options.items():
             if key.startswith('**'):
                 continue
             try:

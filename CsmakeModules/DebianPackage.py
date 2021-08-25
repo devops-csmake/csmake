@@ -1,4 +1,5 @@
 # <copyright>
+# (c) Copyright 2021 Autumn Patterson
 # (c) Copyright 2018 Cardinal Peak Technologies, LLC
 # (c) Copyright 2017 Hewlett Packard Enterprise Development LP
 #
@@ -18,11 +19,11 @@
 from CsmakeModules.Packager import Packager
 import os
 import os.path
-import email.Utils  #For RFC 2822 timestamp
+import email.utils  #For RFC 2822 timestamp
 import gzip
 import sys
 import subprocess
-import StringIO
+import io
 import tarfile
 import hashlib
 
@@ -103,7 +104,7 @@ class DebianPackage(Packager):
     CLASSIFIER_MAPS = {
         'Section' : {
             '' :
-                        (sys.maxint, 'misc'),
+                        (sys.maxsize, 'misc'),
             'Intended Audience :: Developers' :
                         (9, 'devel'),
             'Topic :: Software Development :: Libraries' :
@@ -153,15 +154,15 @@ can be found in /usr/share/common-licenses/LGPL-2.1 file.""",
         result.uname = 'root'
         result.gid = 0
         result.gname = 'root'
-        result.mode = 0644
+        result.mode = 0o644
         result.mtime = self._getCurrentPOSIXTime()
 
         if script:
-            result.mode = result.mode | 0111
+            result.mode = result.mode | 0o111
         return result
 
     def _writeMaintainerScript(self, script, control):
-        maintfile = StringIO.StringIO()
+        maintfile = io.StringIO()
         if 'text' in control:
             maintfile.write('\n'.join(control['text']))
         info = self._createControlFileInfo(script, True)
@@ -169,7 +170,7 @@ can be found in /usr/share/common-licenses/LGPL-2.1 file.""",
         maintfile.close()
 
     def _writeMaintainerFile(self, filetext, control):
-        maintfile = StringIO.StringIO()
+        maintfile = io.StringIO()
         if 'text' in control:
             maintfile.write('\n'.join(control['text']))
         info = self._createControlFileInfo(filetext, False)
@@ -192,9 +193,9 @@ can be found in /usr/share/common-licenses/LGPL-2.1 file.""",
         self._writeMaintainerFile('shlibs', control)
 
     def _control_control(self, control):
-        controlfile = StringIO.StringIO()
+        controlfile = io.StringIO()
         #TODO: Set order?
-        for key, value in control.iteritems():
+        for key, value in control.items():
             if key.startswith('**'):
                 continue
             controlfile.write('%s: %s\n' % (
@@ -205,7 +206,7 @@ can be found in /usr/share/common-licenses/LGPL-2.1 file.""",
         controlfile.close()
 
     def _control_changelog(self, control):
-        changelogfile = StringIO.StringIO()
+        changelogfile = io.StringIO()
         gzipper = gzip.GzipFile(mode='wb', fileobj=changelogfile, mtime=0)
 
         changelogPath = os.path.join(
@@ -222,7 +223,7 @@ can be found in /usr/share/common-licenses/LGPL-2.1 file.""",
         info.uname = 'root'
         info.gid = 0
         info.gname = 'root'
-        info.mode = 0644
+        info.mode = 0o644
         self._addFileObjToArchive(changelogfile, info)
         changelogfile.close()
 
@@ -258,7 +259,7 @@ can be found in /usr/share/common-licenses/LGPL-2.1 file.""",
 
     #Can't do _control_md5sums, because there is no guaranteed ordering
     def _writeMD5sums(self, control):
-        md5file = StringIO.StringIO()
+        md5file = io.StringIO()
         md5lines = control['entries']
         md5file.write('\n'.join(md5lines))
         md5file.write('\n')
@@ -267,8 +268,8 @@ can be found in /usr/share/common-licenses/LGPL-2.1 file.""",
         md5file.close()
 
     def _control_copyright(self, control):
-        copyrightFile = StringIO.StringIO()
-        copyrightKeys = control['keys'].keys()
+        copyrightFile = io.StringIO()
+        copyrightKeys = list(control['keys'].keys())
         initialKeyOrder = ['Format-Specification', 'Name', 'Maintainer']
         for key in initialKeyOrder:
             copyrightFile.write("%s: %s\n" % (
@@ -299,7 +300,7 @@ can be found in /usr/share/common-licenses/LGPL-2.1 file.""",
             self.packageMetadata['Package'],
             'copyright' )
 
-        for key, value in control['files'].iteritems():
+        for key, value in control['files'].items():
             self._writeCopyright(
                 copyrightFile,
                 value,
@@ -310,7 +311,7 @@ can be found in /usr/share/common-licenses/LGPL-2.1 file.""",
         info.uname = 'root'
         info.gid = 0
         info.gname = 'root'
-        info.mode = 0644
+        info.mode = 0o644
         self._addFileObjToArchive(copyrightFile, info)
 
     def _addFileObjToControl(self, fileobj, info):
@@ -370,7 +371,7 @@ can be found in /usr/share/common-licenses/LGPL-2.1 file.""",
                 "low",
                 "  * Initial release",
                 self.packageMetadata['Maintainer'],
-                email.Utils.formatdate() )
+                email.utils.formatdate() )
 
         return self.packageMetadata
 

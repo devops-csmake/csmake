@@ -48,7 +48,7 @@ class copyright(CsmakeModuleAllPhase):
 
     def default(self, options):
         result = {}
-        for key, value in options.iteritems():
+        for key, value in options.items():
             if key.startswith("**"):
                 continue
             result[key] = value

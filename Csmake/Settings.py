@@ -27,7 +27,7 @@ class Setting:
 
         def keys(self):
             if self.value.has_method("keys"):
-                return self.value.keys()
+                return list(self.value.keys())
             else:
                 []
 
@@ -47,7 +47,7 @@ class Settings:
     def initSettings(self, root, settingsDict):
         # Settings are in the form [default value, help text, isFlag, short text]
         root.value = {}
-        for (key, value) in settingsDict.iteritems():
+        for (key, value) in settingsDict.items():
             if value is not type(dict):
                 if len(value) == 3:
                     root.value[key] = Setting(
@@ -75,7 +75,7 @@ class Settings:
         return self.lookupSetting(key)
 
     def keys(self):
-        return self.allsettings.value.keys()
+        return list(self.allsettings.value.keys())
 
     def lookupSetting(self, key):
         if len(key) == 0:

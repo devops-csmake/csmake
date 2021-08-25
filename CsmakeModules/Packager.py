@@ -239,7 +239,7 @@ class Packager(CsmakeModule):
     # For use with ClassifierMapper
     CLASSIFIER_MAPS = {
         '**python-lib' : {
-            '' : (sys.maxint, None),
+            '' : (sys.maxsize, None),
             'Programming Language :: Python' : (9, 'python'),
             'Programming Language :: Python :: 2' : (8, 'python2.7'),
             'Programming Language :: Python :: 2.3' : (5, 'python2.3'),
@@ -259,7 +259,7 @@ class Packager(CsmakeModule):
          #TODO: Check acronyms with Debian pool
          #       http://spdx.org is the authority now.  See CLDSYS-16651
          'License' : {
-             '' : (sys.maxint,"non-free"),
+             '' : (sys.maxsize,"non-free"),
              'License :: OSI Approved :: Academic Free License (AFL)' : (1, "AFL"),
              'License :: OSI Approved :: Apache Software License' : (1, "Apache"),
              'License :: OSI Approved :: Apple Public Source License' : (1, "APL"),
@@ -527,7 +527,7 @@ class Packager(CsmakeModule):
         if '' in maps:
             currentpriority, currentresult = maps['']
         else:
-            currentpriority, currentresult = (sys.maxint, 'default')
+            currentpriority, currentresult = (sys.maxsize, 'default')
 
         for classifier in dictionary:
             if classifier in maps:
@@ -568,7 +568,7 @@ class Packager(CsmakeModule):
         if 'copyrights' in self.productMetadata:
             copyrights = self._packageControl('copyright')
             copyrights['default'] = self.productMetadata['copyrights']
-        for key, value in self.__class__.METAMAP_METHODS.iteritems():
+        for key, value in self.__class__.METAMAP_METHODS.items():
             try:
                 callresult = value.mapmethod(self)(key, value.mapdict(self))
                 if callresult is not None:
@@ -741,7 +741,7 @@ class Packager(CsmakeModule):
 
     def _generateSubstitutionDictionaries(self, pathkeymaps):
         lookupCombos = [{}]
-        for key, paths in pathkeymaps.iteritems():
+        for key, paths in pathkeymaps.items():
             if len(paths) == 0:
                 continue
             newCombos = []
@@ -766,7 +766,7 @@ class Packager(CsmakeModule):
         #Defines the replacement for the default substitutions in the Packager
         pathkeymaps = {}
         if 'path' in mapping:
-            for key, value in mapping['path'].iteritems():
+            for key, value in mapping['path'].items():
                 if key not in pathkeymaps:
                     pathkeymaps[key] = []
                 if value not in virtualmaps:
@@ -815,7 +815,7 @@ class Packager(CsmakeModule):
             #Generate the lookup table
             lookupCombos = self._generateSubstitutionDictionaries(pathkeymaps)
             self.log.devdebug("lookupCombos are '%s'", lookupCombos)
-            for key, paths in pathkeymaps.iteritems():
+            for key, paths in pathkeymaps.items():
                 newpathkeymap = set()
                 try:
                     for combo in lookupCombos:
@@ -834,7 +834,7 @@ class Packager(CsmakeModule):
 
         lookupCombos = self._generateSubstitutionDictionaries(pathkeymaps)
         self.log.devdebug("All final lookup combos are: %s", str(lookupCombos))
-        for value, paths in virtualmaps.iteritems():
+        for value, paths in virtualmaps.items():
             realPathmaps = set()
             for combo in lookupCombos:
                 realPathmaps.update(
@@ -844,7 +844,7 @@ class Packager(CsmakeModule):
 
         ownermaps = {}
         if 'owner' in mapping:
-            for key, value in mapping['owner'].iteritems():
+            for key, value in mapping['owner'].items():
                 methodName = '_map_user_%s' % key.replace('-', '_')
                 if hasattr(self, methodName):
                     getattr(self, methodName)(value, ownermaps)
@@ -859,7 +859,7 @@ class Packager(CsmakeModule):
 
         groupmaps = {}
         if 'group' in mapping:
-            for key, value in mapping['group'].iteritems():
+            for key, value in mapping['group'].items():
                 methodName = '_map_group_%s' % key.replace('-', '_')
                 if hasattr(self, methodName):
                     getattr(self, methodName)(value, groupmaps)
@@ -887,10 +887,10 @@ class Packager(CsmakeModule):
         lookupCombos = self._generateSubstitutionDictionaries(
                            pathmaps)
         self.log.devdebug("pathmaps substitutions: %s", lookupCombos)
-        for key, value in mapping['map'].iteritems():
+        for key, value in mapping['map'].items():
             installmap = {}
             try:
-                for mappart, target in value.iteritems():
+                for mappart, target in value.items():
                     if mappart == 'map':
                         filemap = list(
                             set([self._parseBrackets(target, combo) for combo in lookupCombos]) )
@@ -976,7 +976,7 @@ class Packager(CsmakeModule):
             match = False
             for index in indexes:
                 hit = True
-                for key, value in index.iteritems():
+                for key, value in index.items():
                     if key not in sourceIndex or sourceIndex[key] != value:
                         hit = False
                         break
@@ -1025,8 +1025,8 @@ class Packager(CsmakeModule):
 
     @staticmethod
     def _getDirectoryMode(mode):
-        mode = mode & 0777
-        return ((mode >> 2) & 0111) | mode
+        mode = mode & 0o777
+        return ((mode >> 2) & 0o111) | mode
 
     def _doArchiveFileAspects(self, mapping, sourcePath, archivePath, aspects, info=None):
         if aspects is not None and len(aspects) > 0:
@@ -1214,7 +1214,7 @@ class Packager(CsmakeModule):
            setup required (on override) for the control file(s) or other
            package writing that needs to occur to include the
            metadata represented by the controls defined."""
-        for key, value in self.controls.iteritems():
+        for key, value in self.controls.items():
             aspects = self._lookupControlAspects(key)
             if len(aspects) > 0:
                 self.flowcontrol.initFlowControlIssue(

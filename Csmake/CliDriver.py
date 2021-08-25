@@ -30,25 +30,25 @@ import os.path
 import getopt
 import json
 import logging
-import ConfigParser
+import configparser
 import subprocess
 import textwrap
 import threading
 import uuid
 import signal
 
-from Settings import Settings
-from Settings import Setting
-from Environment import Environment
-from CsmakeModulesModule import CsmakeModulesModule
-from Result import Result
-from ProgramResult import ProgramResult
-from AspectResult import AspectResult
-from AspectFlowControl import AspectFlowControl
-from ParallelLaunchStack import ParallelLaunchStack
-from MetadataManager import DefaultMetadataModule
-from OutputTee import OutputTee
-import phases
+from .Settings import Settings
+from .Settings import Setting
+from .Environment import Environment
+from .CsmakeModulesModule import CsmakeModulesModule
+from .Result import Result
+from .ProgramResult import ProgramResult
+from .AspectResult import AspectResult
+from .AspectFlowControl import AspectFlowControl
+from .ParallelLaunchStack import ParallelLaunchStack
+from .MetadataManager import DefaultMetadataModule
+from .OutputTee import OutputTee
+from . import phases
 
 atexit.register(OutputTee.endAll)
 
@@ -87,9 +87,9 @@ class CliDriver(object):
         self.results = []
         self.stackDumps = []
         self.buildspecLock = threading.Lock()
-        self.buildspec = ConfigParser.RawConfigParser()
+        self.buildspec = configparser.RawConfigParser()
         self.buildspec.optionxform = str
-        self.outBuildspec = ConfigParser.RawConfigParser()
+        self.outBuildspec = configparser.RawConfigParser()
         self.outBuildspec.optionxform = str
         self.phasesDecl = None
         self.onBuildExits = {}
@@ -158,6 +158,7 @@ class CliDriver(object):
                     else:
                         module = CsmakeModulesModule(self)
                         sys.modules['CsmakeModules'] = module
+                        self.log.devdebug("Module: %s", module)
                         return module
                 finally:
                     imp.release_lock()
@@ -172,6 +173,8 @@ class CliDriver(object):
                     csmakeModulesModule = sys.modules['CsmakeModules']
                     if nameparts[1] in csmakeModulesModule.__dict__:
                         self.log.devdebug("Module already loaded")
+                        self.log.devdebug("Module: %s", csmakeModulesModule.__dict__[nameparts[1]])
+                        self.log.devdebug("All Modules: %s", str(sys.modules))
                         return csmakeModulesModule.__dict__[nameparts[1]]
             finally:
                 imp.release_lock()
@@ -204,16 +207,16 @@ class CliDriver(object):
             self.log.chat(text, cr)
         except:
             if cr:
-                print text
+                print(text)
             else:
                 sys.stdout.write('x ' + text)
 
     def getSettingsOptions(self):
         result = []
-        for key in self.settings.keys():
+        for key in list(self.settings.keys()):
             option = key
             if isinstance(self.settings[key], dict):
-                for subkey in self.settings[key].keys():
+                for subkey in list(self.settings[key].keys()):
                     entry = option + ":" + subkey
                     if not self.settings[key][subkey].isFlag:
                         entry = entry + "="
@@ -276,7 +279,7 @@ class CliDriver(object):
         for key in groupKeys:
             self.chat("")
             self.chat( "  ==== %s options ====" % key)
-            for subkey, value in self.settings[key].iteritems():
+            for subkey, value in self.settings[key].items():
                 description = value.short
                 if useLong:
                     description = value.description
@@ -321,7 +324,7 @@ class CliDriver(object):
                 name,
                 module,
                 actualModule )
-            if name in outputBlobs.keys():
+            if name in list(outputBlobs.keys()):
                 warnings.append([
                     "Warning: found duplicate module '%s'" % name,
                     "    Loaded:     %s" % outputBlobs[name]["path"],
@@ -344,7 +347,7 @@ class CliDriver(object):
                 "doc" : docString
             }
 
-        blobKeys = outputBlobs.keys()
+        blobKeys = list(outputBlobs.keys())
         blobKeys.sort()
         if singleType is not None:
             singleType = singleType.strip()
@@ -397,7 +400,7 @@ class CliDriver(object):
         return True
 
     def getFileOptions(self, filenames):
-        parser = ConfigParser.RawConfigParser()
+        parser = configparser.RawConfigParser()
         parser.read(filenames)
         try:
             sections = parser.sections()
@@ -405,7 +408,7 @@ class CliDriver(object):
                 params = parser.items(section)
                 for option, arg in params:
                     if section == 'settings':
-                        if option in self.settings.keys():
+                        if option in list(self.settings.keys()):
                             if self.settings.getObject(option).isFlag:
                                 self.settings[option] = True
                             else:
@@ -414,7 +417,7 @@ class CliDriver(object):
                             stderr.write(
                                 "WARNING: option '%s' not found (FILE)" % option)
                     else:
-                        if section not in self.settings.keys():
+                        if section not in list(self.settings.keys()):
                             self.settings[section] = {}
                         if option not in self.settings[section]:
                             self.settings[section][option] = Setting(
@@ -437,7 +440,7 @@ class CliDriver(object):
                     addins['--makefile'] = arg
             else:
                 addins[option] = arg
-        options = [ (option,addins[option]) for option in addins.keys() ]
+        options = [ (option,addins[option]) for option in list(addins.keys()) ]
         return options
 
     def getCommandLineOptions(self):
@@ -447,7 +450,7 @@ class CliDriver(object):
         try:
             options, remaining = getopt.getopt(sys.argv[1:], "", longOptions)
             self.settings['*'] = remaining
-        except Exception, e:
+        except Exception as e:
             logging.critical(str(e))
             self.usage(str(e))
             sys.exit(1)
@@ -498,10 +501,10 @@ class CliDriver(object):
                 self.getCommandLineOptions()
 
         if self.settings['settings'] != None:
-            for (key, value) in json.loads(self.settings['settings']).items():
+            for (key, value) in list(json.loads(self.settings['settings']).items()):
                 if isinstance(value, dict):
                     self.settings[key] = value
-                    for subkey in value.keys():
+                    for subkey in list(value.keys()):
                         self.settings[key][subkey] = Setting(
                             "%s:%s" % (
                                 key,
@@ -1040,7 +1043,7 @@ class CliDriver(object):
         if self.settings['help-all']:
             self.usage(None, True)
             self.chat( "")
-            self.buildspec = ConfigParser.RawConfigParser()
+            self.buildspec = configparser.RawConfigParser()
             self._loadBuildspec()
             self.dumpTypes()
             self.dumpActions()
@@ -1100,11 +1103,11 @@ class CliDriver(object):
             try:
                 command = "command@"
                 steps = self.buildspec.options(command)
-            except ConfigParser.NoSectionError:
+            except configparser.NoSectionError:
                 try:
                     command = "command@default"
                     steps = self.buildspec.options(command)
-                except ConfigParser.NoSectionError:
+                except configparser.NoSectionError:
                     sections = self.buildspec.sections()
                     for section in sections:
                         if 'command@' in section:
@@ -1166,6 +1169,7 @@ class CliDriver(object):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE )
         pidlist,err = psproc.communicate()
+        pidlist = pidlist.decode('utf8')
         psprocpid = str(psproc.pid)
         processedlist = [ x.split() for x in pidlist.split('\n') if len(x.split()) >= 2 ]
         processedlist = [ x for x in processedlist if x[0] != psprocpid ]
@@ -1177,6 +1181,7 @@ class CliDriver(object):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE )
         pidlist,err = psproc.communicate()
+        pidlist = pidlist.decode('utf8')
         psprocpid = str(psproc.pid)
         processedlist = [ x.split() for x in pidlist.split('\n') if len(x.split()) >= 3 ]
         processedlist = [ x for x in processedlist if x[0] != psprocpid and x[1] != psprocpid ]
@@ -1208,7 +1213,7 @@ class CliDriver(object):
     def _finishUp(self):
         #Kill off all child processes
         self._pgidTerminator()
-        buildExitsExist = len(self.onBuildExits.keys()) != 0
+        buildExitsExist = len(list(self.onBuildExits.keys())) != 0
         if buildExitsExist:
             self.log.chat("""
   .::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::.
@@ -1219,7 +1224,7 @@ class CliDriver(object):
   ::       Any error from the csmake build will be above                ::
   `::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::'
 """)
-        for uid in self.onBuildExits.keys():
+        for uid in list(self.onBuildExits.keys()):
             try:
                 callback = self.onBuildExits[uid]
                 callback()
@@ -1397,6 +1402,7 @@ class CliDriver(object):
                                 name,
                                 modulePath )
                             sys.modules['CsmakeModules'].__dict__[name] = module
+                            sys.modules['CsmakeModules.' + name] = module
                     finally:
                         imp.release_lock()
 

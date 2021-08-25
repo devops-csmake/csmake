@@ -92,7 +92,7 @@ class ShellAspect(CsmakeAspect):
 
         #Look for advise in options
         bestMatchValue = None
-        for key, value in options.iteritems():
+        for key, value in options.items():
             if key.startswith("advise(%s" % joinpoint):
                 keyparts = key.split('#')
                 if len(keyparts) == 1:

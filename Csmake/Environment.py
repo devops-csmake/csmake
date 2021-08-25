@@ -14,8 +14,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # </copyright>
-from MetadataManager import MetadataManager
-from FileManager import MetadataFileTracker
+from .MetadataManager import MetadataManager
+from .FileManager import MetadataFileTracker
 
 class Environment:
     """Shared environment for all build steps"""
@@ -39,7 +39,7 @@ class Environment:
         
     def update(self, dictionary):
         tryAgain = False
-        for key, value in dictionary.iteritems():
+        for key, value in dictionary.items():
             if key.startswith('**'):
                 continue
             try:
@@ -48,7 +48,7 @@ class Environment:
                 tryAgain = True
                 self.engine.log.devdebug("update failed on '%s' - first pass" % key )
         if tryAgain:
-            for key, value in dictionary.iteritems():
+            for key, value in dictionary.items():
                 if key.startswith('**'):
                     continue
                 self.env[key] = self.doSubstitutions(value.strip())

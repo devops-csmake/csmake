@@ -43,7 +43,7 @@ class ShellEnv(CsmakeModuleAllPhase):
         return "<<ShellEnv step definition>>"
 
     def default(self, options):
-        for key in options.keys():
+        for key in list(options.keys()):
             options[key] = self.env.doSubstitutions(options[key])
             self.log.debug("ShellEnv set: %s=%s", key, options[key])
         self.log.passed()

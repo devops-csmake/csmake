@@ -1,4 +1,5 @@
 # <copyright>
+# (c) Copyright 2021 Autumn Patterson
 # (c) Copyright 2017 Hewlett Packard Enterprise Development LP
 #
 # This program is free software: you can redistribute it and/or modify it
@@ -16,7 +17,7 @@
 # </copyright>
 from Csmake.CsmakeModule import CsmakeModule
 import unittest
-import coverage
+import Csmake._vendor.coverage as coverage
 import os.path
 import xml.parsers.expat
 

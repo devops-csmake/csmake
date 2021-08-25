@@ -17,7 +17,7 @@
 # </copyright>
 
 
-from ConfigParser import SafeConfigParser
+from configparser import SafeConfigParser
 from Csmake.Settings import Settings
 from Csmake.CliDriver import CliDriver
 import sys

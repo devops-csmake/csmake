@@ -75,7 +75,7 @@ class versioning(CsmakeModuleAllPhase):
     def default(self, options):
         self.format = options['format']
         formatdict = {}
-        for key, value in options.iteritems():
+        for key, value in options.items():
             keyparts = key.split('_')
             if len(keyparts) != 2:
                 continue

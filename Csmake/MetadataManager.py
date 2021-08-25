@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # </copyright>
-from FileManager import MetadataFileTracker
+from .FileManager import MetadataFileTracker
 import warnings
 
 class DefaultMetadataModule:
@@ -108,7 +108,7 @@ class MetadataManager:
         self.log = log
 
     def parentOf(self, metaid):
-        for key, meta in self.metadataDictionary.iteritems():
+        for key, meta in self.metadataDictionary.items():
             for child in meta['contains']:
                 if child == metaid:
                     return meta

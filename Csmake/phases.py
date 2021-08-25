@@ -116,7 +116,7 @@ Example:
         return True
 
     def _processPhases(self):
-        for key, value in self.options.iteritems():
+        for key, value in self.options.items():
             if key.startswith('__'):
                 continue
             if key.startswith('**'):
@@ -135,7 +135,7 @@ Example:
             self.log.chat("***  Declare phases in a [~~phases~~] section")
             self.log.chat("***  csmake --list-type=~~phases~~ for help")
         else:
-            for phase in phaseDict.iteritems():
+            for phase in phaseDict.items():
                 self.log.chat("%s: %s" % phase)
         if 'sequences' in self.phases:
             self.log.chat("")

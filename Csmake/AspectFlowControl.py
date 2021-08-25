@@ -56,7 +56,7 @@ class AspectFlowControl:
             "Tells main concern to execute even against build avoidance advice")
 
     def _dumpPointsToInfo(self):
-        for key, value in self.issues.iteritems():
+        for key, value in self.issues.items():
             self.log.info("Advise: %s", key)
             self.log.info("    %s", value['__doc__'])
 

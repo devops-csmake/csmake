@@ -55,7 +55,7 @@ class command(CsmakeModuleAllPhase):
 
     def _prepareCommand(self, options):
         self.log.devdebug("command options: %s", str(options))
-        steps = options.keys()
+        steps = list(options.keys())
         steps.sort()
         result = []
         for stanzakey in steps:
