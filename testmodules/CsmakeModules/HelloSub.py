@@ -20,11 +20,11 @@ class HelloSub(Hello):
     """Purpose: To test that subclassing for csmake modules works as expected."""
     def __init__(self, env, log):
         Hello.__init__(self, env, log)
-        print "Hallo there, csmake!"
+        print("Hallo there, csmake!")
 
     def another(self, options):
         self.log.passed()
-        print "HelloSub: another called"
+        print("HelloSub: another called")
 
     def build(self, options):
         Hello.build(self, options)

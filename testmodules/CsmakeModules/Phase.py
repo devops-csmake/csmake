@@ -20,13 +20,13 @@ class Phase(CsmakeModule):
     """Purpose: To test csmake **phases"""
 
     def special(self, options):
-        print "phase: special"
+        print("phase: special")
         self.log.passed()
 
     def build(self, options):
-        print "phase: build"
+        print("phase: build")
         self.log.passed()
 
     def other(self, options):
-        print "phase: other"
+        print("phase: other")
         self.log.passed()

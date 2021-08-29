@@ -1,4 +1,5 @@
 # <copyright>
+# (c) Copyright 2021 Autumn Patterson
 # (c) Copyright 2017 Hewlett Packard Enterprise Development LP
 #
 # This program is free software: you can redistribute it and/or modify it
@@ -25,3 +26,4 @@ class CsmakeModulesModule:
         self.__package__ = 'CsmakeModule'
         self.__loader__ = loader
         self.__path__ = []
+        self.__name__ = 'CsmakeModules'

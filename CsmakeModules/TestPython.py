@@ -113,7 +113,7 @@ class TestPython(CsmakeModule):
         #TODO: add more comprehensive parsing
         lines = []
         try:
-            with open(coverageXMLFile) as coverageFile:
+            with open(coverageXMLFile, 'rb') as coverageFile:
                 parser = xml.parsers.expat.ParserCreate()
                 parser.StartElementHandler = self._xmlStartElementHandler
                 parser.EndElementHandler = self._xmlEndElementHandler

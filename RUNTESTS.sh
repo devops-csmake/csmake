@@ -1,5 +1,6 @@
 #!/bin/bash
 # <copyright>
+# (c) Copyright 2021 Autumn Patterson
 # (c) Copyright 2018 Cardinal Peak Technologies
 # (c) Copyright 2017 Hewlett Packard Enterprise Development LP
 #
@@ -28,7 +29,7 @@ TEST_RESULTS=test-results
 rm -rf $TEST_RESULTS
 mkdir  $TEST_RESULTS
 
-COVERAGE="python -m coverage run -a --branch"
+COVERAGE="python -m Csmake._vendor.coverage run -a --branch"
 
 function test-passed {
     echo "========================================================"
@@ -111,7 +112,7 @@ function dounit {
     echo "#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#"
     echo "      Unit testing: $1"
     echo "      $CMD"
-    if $CMD > $TEST_RESULTS/$1.out
+    if $CMD > $TEST_RESULTS/$1.out 2>&1
     then
         test-passed
     else
@@ -162,7 +163,7 @@ fi
 dounit test-filetracker
 dounit test-csmakemodule
 
-python -m coverage erase
+python -m Csmake._vendor.coverage erase
 
 #Specification tests - testing correctness of csmake running specifications
 dotest-default basic-with-build-phase test.csmake build
@@ -275,7 +276,7 @@ echo "         Output is in '$TEST_RESULTS'"
 echo "             Each test has a file named for the test followed by .out"
 echo ""
 echo "     Test Coverage    *Not including unit testing"
-python -m coverage report -m
+python -m Csmake._vendor.coverage report -m
 
 echo " "
 echo "nunununununununununununununununununununununununununu"

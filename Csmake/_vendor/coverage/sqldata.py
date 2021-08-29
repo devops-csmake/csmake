@@ -269,7 +269,7 @@ class CoverageData(SimpleReprMixin):
         """Read the metadata from a database so that we are ready to use it."""
         with self._dbs[get_thread_id()] as db:
             try:
-                schema_version, = db.execute_one("select version from Csmake._vendor.coverage_schema")
+                schema_version, = db.execute_one("select version from coverage_schema")
             except Exception as exc:
                 raise CoverageException(
                     "Data file {!r} doesn't seem to be a coverage data file: {}".format(

@@ -78,7 +78,8 @@ description=Do the hello build
 02=other
 03=subclass
 04=testinclude, includedenvs, hello
-05=failOnce ;This should pass
+#This should pass
+05=failOnce
 
 [command@another]
 description=Do a different hello build

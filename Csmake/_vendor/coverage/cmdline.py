@@ -489,7 +489,7 @@ def show_help(error=None, topic=None, parser=None):
         if program_name.endswith(auto_suffix):
             program_name = program_name[:-len(auto_suffix)]
 
-    help_params = dict(coverage.__dict__)
+    help_params = dict(Csmake._vendor.coverage.__dict__)
     help_params['program_name'] = program_name
     if CTracer is not None:
         help_params['extension_modifier'] = 'with C extension'

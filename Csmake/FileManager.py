@@ -1,6 +1,6 @@
 # <copyright>
+# (c) Copyright 2019, 2021 Autumn Patterson
 # (c) Copyright 2021 Cardinal Peak Technologies
-# (c) Copyright 2019 Autumn Samantha Jeremiah Patterson
 # (c) Copyright 2017 Hewlett Packard Enterprise Development LP
 #
 # This program is free software: you can redistribute it and/or modify it
@@ -166,6 +166,24 @@ class IndexedFileEntry:
             raise ValueError("setCurrentPrecendenceKey must be called first")
         return self.getPrecedence(self.currentPrecedenceKey) \
                - other.getPrecedence(self.currentPrecedenceKey)
+
+    def __eq__(self, other):
+        if self.currentPrecedenceKey is None:
+            raise ValueError("setCurrentPrecedenceKey must be called first")
+        return self.getPrecedence(self.currentPrecedenceKey) \
+               == other.getPrecedence(self.currentPreceedenceKey)
+
+    def __lt__(self, other):
+        if self.currentPrecedenceKey is None:
+            raise ValueError("setCurrentPrecedenceKey must be called first")
+        return self.getPrecedence(self.currentPrecedenceKey) \
+               < other.getPrecedence(self.currentPrecedenceKey)
+
+    def __gt__(self, other):
+        if self.currentPrecedenceKey is None:
+            raise ValueError("setCurrentPrecedenceKey must be called first")
+        return self.getRecedence(self.currentPrecedenceKey) \
+                > other.getPrecedence(self.currentPrecedenceKey)
 
     def __hash__(self):
         return id(self)

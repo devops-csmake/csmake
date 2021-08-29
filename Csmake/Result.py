@@ -1,5 +1,5 @@
 # <copyright>
-# (c) Copyright 2019 Autumn Samantha Jeremiah Patterson
+# (c) Copyright 2019, 2021 Autumn Patterson
 # (c) Copyright 2017 Hewlett Packard Enterprise Development LP
 #
 # This program is free software: you can redistribute it and/or modify it
@@ -24,9 +24,9 @@ import tempfile
 import threading
 import time
 import traceback
-from . import OutputTee
+from Csmake import OutputTee
 
-from .Reporter import Reporter, NonChattyReporter
+from Csmake.Reporter import Reporter, NonChattyReporter
 
 class Result:
 

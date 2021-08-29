@@ -21,25 +21,25 @@ class HelloAspect(CsmakeAspect):
 
     def start__build(self, phase, options, step, stepoptions):
         self.start(phase, options, step, stepoptions)
-        print "This is the aspect, start__build....HELLO!!!!"
+        print("This is the aspect, start__build....HELLO!!!!")
         return True
 
     def start(self, phase, options, step, stepoptions):
         self.repeat = True
-        print "The step given is: %s" % str(step)
-        print "The step options are: %s" % str(stepoptions)
+        print("The step given is: %s" % str(step))
+        print("The step options are: %s" % str(stepoptions))
         self.log.passed()
 
     def end(self, phase, options, step, stepoptions):
-        print "Aspect: General end for all phases"
+        print("Aspect: General end for all phases")
         self.log.passed()
 
     def passed(self, phase, options, step, stepoptions):
-        print "Aspect: the step succeeded"
+        print("Aspect: the step succeeded")
         self.log.passed()
 
     def failed(self, phase, options, step, stepoptions):
-        print "Aspect: the step failed"
+        print("Aspect: the step failed")
         if self.repeat:
             self.log.info("Trying the step again")
             self.flowcontrol.vote("tryAgain", True, self)
