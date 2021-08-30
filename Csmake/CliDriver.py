@@ -1,6 +1,6 @@
 # <copyright>
+# (c) Copyright 2019,2021 Autumn Patterson
 # (c) Copyright 2021 Cardinal Peak Technologies, LLC
-# (c) Copyright 2019 Autumn Samantha Jeremiah Patterson
 # (c) Copyright 2017 Hewlett Packard Enterprise Development LP
 #
 # This program is free software: you can redistribute it and/or modify it
@@ -52,7 +52,7 @@ from . import phases
 
 atexit.register(OutputTee.endAll)
 
-CSMAKE_LIBRARY_VERSION = "1.10.8"
+CSMAKE_LIBRARY_VERSION = "3.0.0"
 
 #TODO: Nested settings and settings processing needs to be migrated to
 #      Settings.py and fixed to be more generic

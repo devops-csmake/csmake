@@ -1,4 +1,5 @@
 # <copyright>
+# (c) Copyright 2021 Autumn Patterson
 # (c) Copyright 2018-2021 Cardinal Peak Technologies, LLC
 # (c) Copyright 2017 Hewlett Packard Enterprise Development LP
 #
@@ -26,7 +27,7 @@ test=Run testing for csmake
 
 [metadata@csmake]
 name=csmake
-version=1.6.10
+version=3.0.0
 description=build scripting tool allowing a completely specified build process
 about=Most build tools are centered around the idea of delivering one or a
  handful of results based around a single tool or development path.
@@ -59,25 +60,25 @@ about=Most build tools are centered around the idea of delivering one or a
  Python coverage is needed if you want to use the python testing
 packager=Autumn Patterson <autumn@casecracker.com>
 manufacturer=Cardinal Peak Technologies, LLC
-depends=python (>= 2.6)
+depends=python3 (>= 3.8)
 recommends=python-coverage, chrpath
 suggests=csmake-swak, csmake-packaging, csmake-providers
 keywords=make build development
-url=https://rndwiki.corp.hpecorp.net/confluence/display/cloudos/CsMake
-copyrights=csmake-copyright, csmake-cpt-copyright
+copyrights=csmake-copyright, csmake-cpt-copyright, csmake-autumn
 classifiers=
     Development Status :: 4 - Beta
     Intended Audience :: Developers
     Topic :: Software Development :: Build Tools
-    Programming Language :: Python :: 2
-    Programming Language :: Python :: 2.6
-    Programming Language :: Python :: 2.7
+    Programming Language :: Python :: 3
+    Programming Language :: Python :: 3.8
+    Programming Language :: Python :: 3.9
     License :: OSI Approved :: GNU General Public License v3 (GPLv3)
 **files=
     <bin (python:script)> csmake,
     <Csmake (python:package)>  Csmake/*.py,
     <CsmakeModules (python:csmake-modules)> CsmakeModules/*.py,
-    <man (groff:man-source)> docs/*.*.roff
+    <man (groff:man-source)> docs/*.*.roff,
+    <vendor (python-vendor:python-packages)> Csmake/_vendor/*
 
 [copyright@csmake-copyright]
 disclaimer=
@@ -103,6 +104,33 @@ years=2014-2017
 license=GPLv3
 holder=Cardinal Peak Technologies, LLC
 years=2018,2021
+
+[copyright@csmake-autumn]
+license=GPLv3
+holder=Autumn Patterson
+years=2020-2021
+
+[copyright@vendor-coverage-orig]
+license=Apache-2
+holder=Gareth Rees
+years=2001
+
+[copyright@vendor-coverage-current]
+disclaimer=
+ Except where noted otherwise, this software is licensed under the Apache
+ License, Version 2.0 (the "License"); you may not use this work except in
+ compliance with the License.  You may obtain a copy of the License at
+ .
+    http://www.apache.org/licenses/LICENSE-2.0
+ .
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+license=Apache-2
+holder=Ned Batchelder
+years=2004-2021
 
 [AsciiGPGSignature@default-ascii-signer]
 [DebianPackage@debian-csmake-signed]
@@ -168,6 +196,12 @@ map_Csmake=
    copyright: csmake-copyright, csmake-cpt-copyright
    owner:{root}
    group:{root}
+   permissions: 644
+map_vendor=
+   map: <vendor> -(1-1)-> {PYTHON}/Csmake/_vendor/[~~file~~]
+   copyright: vendor-coverage-orig,vendor-coverage-current
+   owner:{root}
+   group: {root}
    permissions: 644
 map_CsmakeModules=
    map: <CsmakeModules> -(1-1)-> {PYTHON}/Csmake/CsmakeModules/[~~file~~]

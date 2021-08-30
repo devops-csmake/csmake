@@ -1,4 +1,5 @@
 # <copyright>
+# (c) Copyright 2021 Autumn Patterson
 # (c) Copyright 2018 Cardinal Peak Technologies, LLC
 # (c) Copyright 2017 Hewlett Packard Enterprise Development LP
 #
@@ -248,12 +249,18 @@ class Packager(CsmakeModule):
             'Programming Language :: Python :: 2.6' : (5, 'python2.6'),
             'Programming Language :: Python :: 2.7' : (5, 'python2.7'),
             'Programming Language :: Python :: 2 :: Only' : (1, 'python2'),
-            'Programming Language :: Python :: 3' : (9, 'python3.4'),
-            'Programming Language :: Python :: 3.0' : (5, 'python3.0'),
-            'Programming Language :: Python :: 3.1' : (5, 'python3.1'),
-            'Programming Language :: Python :: 3.2' : (5, 'python3.2'),
-            'Programming Language :: Python :: 3.3' : (5, 'python3.3'),
-            'Programming Language :: Python :: 3.4' : (5, 'python3.4'),
+            'Programming Language :: Python :: 3' : (9, 'python3'),
+            'Programming Language :: Python :: 3.0' : (5, 'python3'),
+            'Programming Language :: Python :: 3.1' : (5, 'python3'),
+            'Programming Language :: Python :: 3.2' : (5, 'python3'),
+            'Programming Language :: Python :: 3.3' : (5, 'python3'),
+            'Programming Language :: Python :: 3.4' : (5, 'python3'),
+            'Programming Language :: Python :: 3.5' : (5, 'python3'),
+            'Programming Language :: Python :: 3.6' : (5, 'python3'),
+            'Programming Language :: Python :: 3.7' : (5, 'python3'),
+            'Programming Language :: Python :: 3.8' : (5, 'python3'),
+            'Programming Language :: Python :: 3.9' : (5, 'python3'),
+            'Programming Language :: Python :: 3.10' : (5, 'python3'),
             'Programming Language :: Python :: 3 :: Only' : (1, 'python3')
          },
          #TODO: Check acronyms with Debian pool
@@ -699,8 +706,11 @@ class Packager(CsmakeModule):
                     break
                 dists.append(dist)
             distpaths = []
+            repeats = []
             for dist in dists:
-                #TODO: This is not correct for py 3 and older py 2's
+                if dist in repeats:
+                    continue
+                repeats.append(dist)
                 distpaths.append(os.path.join(
                     '%(root)s',
                     "usr",
@@ -711,12 +721,12 @@ class Packager(CsmakeModule):
             self.log.warning("python-dist-packages was specified in the mappings: but the product's metadata does not specify:")
             self.log.warning("  Programming Language :: Python")
             self.log.warning("  (nor anything more specific than that)")
-            self.log.warning("  defaulting to python2.7")
+            self.log.warning("  defaulting to python3")
             pathmaps[value] = [ os.path.join(
                '%(root)s',
                'usr',
                'lib',
-               'python2.7' ) ]
+               'python3' ), ]
         pathkeymaps['python-lib'] = pathmaps[value]
 
     ###############################
@@ -1101,7 +1111,7 @@ class Packager(CsmakeModule):
                 aspects,
                 info ):
                 return None
-            self.log.devdebug("addFilter info: %s", str(info.__dict__))
+            #self.log.devdebug("addFilter info: %s", str(info.__dict__))
             self._ensureArchivePath(self.archive, info)
             self._filePlacingInPackage(
                 'data',

@@ -1,4 +1,5 @@
 # <copyright>
+# (c) Copyright 2021 Autumn Patterson
 # (c) Copyright 2017 Hewlett Packard Enterprise Development LP
 #
 # This program is free software: you can redistribute it and/or modify it
@@ -40,7 +41,7 @@ class CompressManPage(CsmakeModule):
                 continue
             self._ensureDirectoryExists(result)
             shutil.copyfile(source, result)
-            sourceman = open(source)
+            sourceman = open(source, 'rb')
             makeman = gzip.GzipFile(result, 'wb', mtime=0)
             self.log.info("Writing manpage to '%s'", result)
             makeman.writelines(sourceman)

@@ -162,17 +162,17 @@ can be found in /usr/share/common-licenses/LGPL-2.1 file.""",
         return result
 
     def _writeMaintainerScript(self, script, control):
-        maintfile = io.StringIO()
+        maintfile = io.BytesIO()
         if 'text' in control:
-            maintfile.write('\n'.join(control['text']))
+            maintfile.write('\n'.join(control['text']).encode('utf-8'))
         info = self._createControlFileInfo(script, True)
         self._addFileObjToControl(maintfile, info)
         maintfile.close()
 
     def _writeMaintainerFile(self, filetext, control):
-        maintfile = io.StringIO()
+        maintfile = io.BytesIO()
         if 'text' in control:
-            maintfile.write('\n'.join(control['text']))
+            maintfile.write('\n'.join(control['text']).encode('utf-8'))
         info = self._createControlFileInfo(filetext, False)
         self._addFileObjToControl(maintfile, info)
         maintfile.close()
@@ -193,20 +193,20 @@ can be found in /usr/share/common-licenses/LGPL-2.1 file.""",
         self._writeMaintainerFile('shlibs', control)
 
     def _control_control(self, control):
-        controlfile = io.StringIO()
+        controlfile = io.BytesIO()
         #TODO: Set order?
         for key, value in control.items():
             if key.startswith('**'):
                 continue
-            controlfile.write('%s: %s\n' % (
+            controlfile.write(('%s: %s\n' % (
                 key,
-                value ) )
+                value )).encode('utf-8'))
         info = self._createControlFileInfo('control')
         self._addFileObjToControl(controlfile, info)
         controlfile.close()
 
     def _control_changelog(self, control):
-        changelogfile = io.StringIO()
+        changelogfile = io.BytesIO()
         gzipper = gzip.GzipFile(mode='wb', fileobj=changelogfile, mtime=0)
 
         changelogPath = os.path.join(
@@ -215,7 +215,7 @@ can be found in /usr/share/common-licenses/LGPL-2.1 file.""",
             'changelog.Debian.gz' )
 
         #TODO: Fix this - it just writes the default for now
-        gzipper.write(control['default-top'])
+        gzipper.write(control['default-top'].encode('utf-8'))
         gzipper.close()
 
         info = self._createArchiveFileInfo(changelogPath)
@@ -233,54 +233,54 @@ can be found in /usr/share/common-licenses/LGPL-2.1 file.""",
             return
         if path is not None:
             copyrightFile.write(
-                "Files: %s\n" % path )
+                ("Files: %s\n" % path).encode('utf-8') )
         disclaimers = []
         copystring = "Copyright: "
         for right in copyright:
             copyrightFile.write(
-                "%s %s %s\n" % (
+                ("%s %s %s\n" % (
                     copystring,
                     right['years'],
-                    right['holder'] ) )
+                    right['holder'] )).encode('utf-8') )
             copystring = "   "
             #TODO: What to do if differing licenses?
             license = right['license'].strip()
             if 'disclaimer' in right:
                 disclaimers.append(right['disclaimer'].strip())
         copyrightFile.write(
-            "License: %s\n" % license)
+            ("License: %s\n" % license).encode('utf-8'))
         if license in DebianPackage.LICENSE_TEXTS:
-            copyrightFile.write(DebianPackage.LICENSE_TEXTS[license])
-            copyrightFile.write('\n')
+            copyrightFile.write(DebianPackage.LICENSE_TEXTS[license].encode('utf-8'))
+            copyrightFile.write(b'\n')
         if len(disclaimers) > 0:
             copyrightFile.write(
-                "Disclaimer: %s\n" % '\n'.join(disclaimers))
-        copyrightFile.write('\n')
+                ("Disclaimer: %s\n" % '\n'.join(disclaimers)).encode('utf-8'))
+        copyrightFile.write(b'\n')
 
     #Can't do _control_md5sums, because there is no guaranteed ordering
     def _writeMD5sums(self, control):
-        md5file = io.StringIO()
+        md5file = io.BytesIO()
         md5lines = control['entries']
-        md5file.write('\n'.join(md5lines))
-        md5file.write('\n')
+        md5file.write('\n'.join(md5lines).encode('utf-8'))
+        md5file.write(b'\n')
         info = self._createControlFileInfo('md5sums')
         self._addFileObjToControl(md5file, info)
         md5file.close()
 
     def _control_copyright(self, control):
-        copyrightFile = io.StringIO()
+        copyrightFile = io.BytesIO()
         copyrightKeys = list(control['keys'].keys())
         initialKeyOrder = ['Format-Specification', 'Name', 'Maintainer']
         for key in initialKeyOrder:
-            copyrightFile.write("%s: %s\n" % (
+            copyrightFile.write(("%s: %s\n" % (
                 key,
-                control['keys'][key] ) )
+                control['keys'][key] )).encode('utf-8') )
             copyrightKeys.remove(key)
         for key in copyrightKeys:
-            copyrightFile.write("%s: %s\n" % (
+            copyrightFile.write(("%s: %s\n" % (
                 key,
-                control['keys'][key] ) )
-        copyrightFile.write('\n')
+                control['keys'][key] )).encode('utf-8') )
+        copyrightFile.write(b'\n')
         if 'default' in control:
             if type(control['default']) != list:
                 defaults = [control['default']]
@@ -405,9 +405,9 @@ can be found in /usr/share/common-licenses/LGPL-2.1 file.""",
     def _setupArchive(self):
         self.fullPathToArchive = os.path.join(
             self.resultdir,
-            'data.tar.gz' )
+            'data.tar.xz' )
         self._ensureDirectoryExists(self.resultdir, True)
-        self.archive = tarfile.open(self.fullPathToArchive, 'w:gz')
+        self.archive = tarfile.open(self.fullPathToArchive, 'w:xz', format=tarfile.USTAR_FORMAT)
 
     def _filePlacingInPackage(self, archive, sourcePath, archivePath, contents=None):
         Packager._filePlacingInPackage(self, archive, sourcePath, archivePath, contents)
@@ -418,7 +418,7 @@ can be found in /usr/share/common-licenses/LGPL-2.1 file.""",
             if os.path.isdir(sourcePath):
                 self.log.devdebug("Adding directory: %s", sourcePath)
                 return
-            with open(sourcePath) as content:
+            with open(sourcePath, 'rb') as content:
                 md5sum = self._fileMD5(content)
         elif contents is not None:
             if type(contents) == str:
@@ -448,8 +448,8 @@ can be found in /usr/share/common-licenses/LGPL-2.1 file.""",
             dbfile.write('2.0\n')
         self.fullPathToControl = os.path.join(
             self.resultdir,
-            'control.tar.gz' )
-        self.controlfile = tarfile.open(self.fullPathToControl, 'w:gz')
+            'control.tar.xz' )
+        self.controlfile = tarfile.open(self.fullPathToControl, 'w:xz')
 
     def _finishPackage(self):
         #Write any remaining information
@@ -460,8 +460,8 @@ can be found in /usr/share/common-licenses/LGPL-2.1 file.""",
             self.controlfile.close()
             filelist = [
                 'debian-binary',
-                'control.tar.gz',
-                'data.tar.gz' ]
+                'control.tar.xz',
+                'data.tar.xz' ]
             if 'signer' in self.options:
                 idname = self.options['signer']
                 phase = self.engine.getPhase()
