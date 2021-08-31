@@ -20,11 +20,11 @@ class Hello(CsmakeModuleAllPhase):
     """Purpose: To test csmake, that is all"""
 
     def default(self, options):
-        print "Hello, csmake"
-        print "Arguments are: %s" % str(options)
-        print "Environment is: %s" % str(self.env)
+        print("Hello, csmake")
+        print(("Arguments are: %s" % str(options)))
+        print(("Environment is: %s" % str(self.env)))
         self.log.passed()
 
     def build(self, options):
-        print "Hello, build phase for csmake"
+        print("Hello, build phase for csmake")
         self.log.passed()

@@ -51,7 +51,7 @@ class testFileInstance_basic(unittest.TestCase):
     def test_saneInitialIndex(self):
         myindex = self._getStockIndex('simple')
         cut = self._createaCUT(myindex)
-        for axis in myindex.keys():
+        for axis in list(myindex.keys()):
             self.assertTrue(axis in cut.index)
             self.assertEqual(
                 cut.index[axis],

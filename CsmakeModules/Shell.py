@@ -131,7 +131,7 @@ class Shell(CsmakeModuleAllPhase):
         elif phase == 'clean':
             phaseString = phaseString + r"|(?P<default>^command-clean$)"
         phasere = re.compile(phaseString)
-        for key, value in options.iteritems():
+        for key, value in options.items():
             match = phasere.match(key)
             if match is not None:
                 commandType = match.group("command")

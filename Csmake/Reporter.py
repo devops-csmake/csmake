@@ -1,6 +1,6 @@
 # <copyright>
+# (c) Copyright 2019, 2021 Autumn Patterson
 # (c) Copyright 2019 Cardinal Peak Technologies
-# (c) Copyright 2019 Autumn Samantha Jeremiah Patterson
 #
 # This program is free software: you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the
@@ -16,7 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # </copyright>
 
-from phases import phases
+from .phases import phases
 
 class Reporter:
     PHASE_BANNER="""       _   _   _   _   _   _   _   _   _   _   _   _   _   _   _   _

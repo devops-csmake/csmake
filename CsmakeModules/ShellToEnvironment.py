@@ -61,7 +61,7 @@ class ShellToEnvironment(CsmakeModuleAllPhase):
         pass
 
     def default(self, options):
-        for option, shellkey in options.iteritems():
+        for option, shellkey in options.items():
             if option.startswith("**"):
                 continue
             default_value = None

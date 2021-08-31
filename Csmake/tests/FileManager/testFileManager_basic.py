@@ -19,7 +19,8 @@ import re
 import unittest
 import os.path
 import FileManager
-reload(FileManager)
+import importlib
+importlib.reload(FileManager)
 from FileManager import FileManager, MetadataFileTracker, FileSpec
 
 class testFileManager_basic(unittest.TestCase):
@@ -307,8 +308,8 @@ class testFileManager_basic(unittest.TestCase):
 
         #This test is sufficiently complex to get good coverage on the printing
         result = cut.__repr__()
-        print "Result of FileManager repr, first 1000"
-        print result[:1000], "..."
+        print("Result of FileManager repr, first 1000")
+        print(result[:1000], "...")
 
     def test_basicFileAbsorbDeleting(self):
         cut = self._createaCUT()

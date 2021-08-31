@@ -1,5 +1,5 @@
 # <copyright>
-# (c) Copyright 2019 Autumn Samantha Jeremiah Patterson
+# (c) Copyright 2019, 2021 Autumn Patterson
 # (c) Copyright 2017 Hewlett Packard Enterprise Development LP
 #
 # This program is free software: you can redistribute it and/or modify it
@@ -18,15 +18,15 @@
 import json
 import os.path
 import pickle
-import StringIO
+import io
 import sys
 import tempfile
 import threading
 import time
 import traceback
-import OutputTee
+from Csmake import OutputTee
 
-from Reporter import Reporter, NonChattyReporter
+from Csmake.Reporter import Reporter, NonChattyReporter
 
 class Result:
 
@@ -268,7 +268,7 @@ class Result:
         try:
             actualResult = OutputTee.OutputTee.getResult(self)
             if actualResult is not None:
-                fobj.write(actualResult)
+                fobj.write(actualResult.decode("utf8"))
         except:
             self.exception("Failed to get output")
         return None
@@ -333,7 +333,7 @@ class Result:
     def exception(self, output, *params):
         ei = sys.exc_info()
         if self.loglevel >= Result.LOG_DEBUG or self.devoutput:
-            sio = StringIO.StringIO()
+            sio = io.StringIO()
             traceback.print_exception(ei[0], ei[1], ei[2], None, sio)
             s = sio.getvalue()
             sio.close()

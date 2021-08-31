@@ -20,5 +20,5 @@ class AnotherTestOnExitHandler(TestOnExitHandler.TestOnExitHandler):
     """Purpose: To test exit handler code, that is all"""
         
     def _onExit(self):
-        print "Another's _onExit called"
+        print("Another's _onExit called")
 

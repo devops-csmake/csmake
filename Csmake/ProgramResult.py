@@ -15,9 +15,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # </copyright>
-from Result import Result
-from phases import phases
-from Reporter import ProgramReporter, NonChattyProgramReporter
+from .Result import Result
+from .phases import phases
+from .Reporter import ProgramReporter, NonChattyProgramReporter
 
 class ProgramResult(Result):
 

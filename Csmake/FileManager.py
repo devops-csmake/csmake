@@ -1,6 +1,6 @@
 # <copyright>
+# (c) Copyright 2019, 2021 Autumn Patterson
 # (c) Copyright 2021 Cardinal Peak Technologies
-# (c) Copyright 2019 Autumn Samantha Jeremiah Patterson
 # (c) Copyright 2017 Hewlett Packard Enterprise Development LP
 #
 # This program is free software: you can redistribute it and/or modify it
@@ -101,7 +101,7 @@ class IndexedFileEntry:
        This represents a protocol that anything that represents a file
        should respond to"""
     def __repr__(self, offset=0, terse=False):
-        keys = self.index.keys()
+        keys = list(self.index.keys())
         values = {}
         for axis in FileManager.AXES:
             if axis in self.index:
@@ -167,6 +167,24 @@ class IndexedFileEntry:
         return self.getPrecedence(self.currentPrecedenceKey) \
                - other.getPrecedence(self.currentPrecedenceKey)
 
+    def __eq__(self, other):
+        if self.currentPrecedenceKey is None:
+            raise ValueError("setCurrentPrecedenceKey must be called first")
+        return self.getPrecedence(self.currentPrecedenceKey) \
+               == other.getPrecedence(self.currentPreceedenceKey)
+
+    def __lt__(self, other):
+        if self.currentPrecedenceKey is None:
+            raise ValueError("setCurrentPrecedenceKey must be called first")
+        return self.getPrecedence(self.currentPrecedenceKey) \
+               < other.getPrecedence(self.currentPrecedenceKey)
+
+    def __gt__(self, other):
+        if self.currentPrecedenceKey is None:
+            raise ValueError("setCurrentPrecedenceKey must be called first")
+        return self.getRecedence(self.currentPrecedenceKey) \
+                > other.getPrecedence(self.currentPrecedenceKey)
+
     def __hash__(self):
         return id(self)
 
@@ -191,7 +209,7 @@ class IndexedFileEntry:
 
     def findInstances(self, spec):
         locationMatch = None
-        for axis, value in spec.index.iteritems():
+        for axis, value in spec.index.items():
             if axis in FileManager.NON_AXES:
                 continue
             try:
@@ -377,7 +395,7 @@ class FileManager:
                 "%sTracking Table:" %space]
             for axis in FileManager.AXES:
                 result.append(" %s========== %s ==========" % (space, axis))
-                for key, value in self.index[axis].iteritems():
+                for key, value in self.index[axis].items():
                     result.append("  %s~~~~~~ %s ~~~~~~" % (space, key))
                     for instance in value:
                         if not terse:
@@ -453,7 +471,7 @@ class FileManager:
     @staticmethod
     def fixupEmptySpecEntries(specdict):
         wipeAxes = []
-        for axis, value in specdict.iteritems():
+        for axis, value in specdict.items():
             if value is None or len(value) == 0:
                 wipeAxes.append(axis)
         for axis in wipeAxes:
@@ -694,7 +712,7 @@ class FileManager:
                 self.log.error("  Got: %s", mappingStatement)
                 return None
             mapdict = match.groupdict()
-            for key, value in mapdict.iteritems():
+            for key, value in mapdict.items():
                 if value is None or len(value) == 0:
                     self.log.error("File map is missing a part (%s)", key)
                     self.log.error(FileManager.MAP_STRUCTURE)
@@ -729,7 +747,7 @@ class FileManager:
             locked = True
             test = re.compile(revalue)
             return [value \
-               for key, values in self.index[axis].iteritems() \
+               for key, values in self.index[axis].items() \
                if test.search(key) \
                    for value in values ]
         except re.error:
@@ -766,7 +784,7 @@ class FileManager:
         try:
             self.lock.acquire()
             locked = True
-            for axis, value in spec.index.iteritems():
+            for axis, value in spec.index.items():
                 if axis in FileManager.NON_AXES:
                     continue
                 if axis == 'location':
@@ -898,7 +916,7 @@ class FileManager:
         try:
             self.lock.acquire()
             locked = True
-            for axis, value in indicies.iteritems():
+            for axis, value in indicies.items():
                 if axis not in self.index:
                     self.index[axis] = {}
                 if value not in self.index[axis]:
@@ -967,7 +985,7 @@ class FileManager:
                 actualLocation,
                 newinstanceSpec )
         self.log.devdebug("newinstanceSpec: %s", str(newinstanceSpec))
-        for axis, value in newinstanceSpec.iteritems():
+        for axis, value in newinstanceSpec.items():
             if value is None:
                 continue
             #print axis, value, newinstanceSpec
@@ -1110,17 +1128,17 @@ class FileManager:
             sourcere, _, axis = self._determineMatchingLocationFromSource(afrom, afrom, thunkTo)
             matcher = re.match(sourcere, afrom.index[axis])
             if matcher is not None:
-                index = { k: v for k, v in matcher.groupdict().iteritems() if v is not None }
+                index = { k: v for k, v in matcher.groupdict().items() if v is not None }
             else:
                 index = {}
             index.update(afrom.index)
-            for key, value in index.iteritems():
+            for key, value in index.items():
                 if key not in specCollection:
                     specCollection[key] = value
                 if specCollection[key] != value:
                     specCollection[key] = [value, specCollection[key]]
         for ato in tos:
-            for key, value in ato.index.iteritems():
+            for key, value in ato.index.items():
                 if '[~~' in value:
                     continue
                 if key not in specCollection:
@@ -1135,7 +1153,7 @@ class FileManager:
                     if '{~~' in ato.index[locKey]:
                         self.log.error("Depricated substitution syntax {~~<key>~~} used and not supported: %s", str(ato))
                         raise ValueError("Depricated substitution")
-                    for key, value in specCollection.iteritems():
+                    for key, value in specCollection.items():
                         if '[~~%s~~]' % key in ato.index[locKey]:
                             if type(value) is list or type(value) is dict:
                                 self.log.error("Indeterminate substitution (%s): %s", key, str(ato))
@@ -1251,7 +1269,7 @@ class FileRecord(FileManager, IndexedFileEntry):
         #      should not be concurrent
         resultSet = self._standardAxesIndexLookup(spec)
         totalAxes = 0
-        specAxes = spec.index.keys()
+        specAxes = list(spec.index.keys())
         for key in specAxes:
             if key in FileManager.AXES:
                 totalAxes = totalAxes + 1

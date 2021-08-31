@@ -1,5 +1,6 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 # <copyright>
+# (c) Copyright 2021 Autumn Patterson
 # (c) Copyright 2017 Hewlett Packard Enterprise Development LP
 #
 # This program is free software: you can redistribute it and/or modify it
@@ -17,7 +18,7 @@
 # </copyright>
 
 
-from ConfigParser import SafeConfigParser
+from configparser import SafeConfigParser
 from Csmake.Settings import Settings
 from Csmake.CliDriver import CliDriver
 import sys

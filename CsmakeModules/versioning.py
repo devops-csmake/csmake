@@ -75,7 +75,7 @@ class versioning(CsmakeModuleAllPhase):
     def default(self, options):
         self.format = options['format']
         formatdict = {}
-        for key, value in options.iteritems():
+        for key, value in options.items():
             keyparts = key.split('_')
             if len(keyparts) != 2:
                 continue
@@ -96,7 +96,7 @@ class versioning(CsmakeModuleAllPhase):
                     self.log.warning("   As a result, <<error>> will be given instead of the intended value")
                     formatdict[keyparts[1]] = '<<error>>'
                 else:
-                    resultvalue = str(stdout).strip()
+                    resultvalue = str(stdout.decode('utf-8')).strip()
                     self.log.debug("Version %s: %s", keyparts[1], resultvalue)
                     formatdict[keyparts[1]] = resultvalue
             elif keyparts[0] == 'value':

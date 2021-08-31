@@ -7,5 +7,5 @@ description=test a nested csmake invocation
 
 [Shell@do-nested-csmake]
 command=set -eux
- csmake --makefile test-shell.csmake build
+ ./csmake --makefile test-shell.csmake build
 

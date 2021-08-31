@@ -1,4 +1,5 @@
 # <copyright>
+# (c) Copyright 2021 Autumn Patterson
 # (c) Copyright 2017 Hewlett Packard Enterprise Development LP
 #
 # This program is free software: you can redistribute it and/or modify it
@@ -16,7 +17,7 @@
 # </copyright>
 from Csmake.CsmakeAspect import CsmakeAspect
 import unittest
-import coverage
+import Csmake._vendor.coverage as coverage
 
 class CheckPythonCoverage(CsmakeAspect):
     """Purpose: Fail testing if coverage does not pass the given threshold
@@ -46,7 +47,7 @@ class CheckPythonCoverage(CsmakeAspect):
         elif 'every-class' in options and options['every-class'] == 'True':
             classesPassed = True
             for classResult in step.olderCoverageResults:
-                lineRate = float(classResult[u'line-rate']) *100.0
+                lineRate = float(classResult['line-rate']) *100.0
                 if requiredPercent > lineRate:
                     self.log.error("Class '%s' coverage was not enough (%f%%)", classResult['name'], lineRate)
                     classesPassed = False

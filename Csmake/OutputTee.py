@@ -1,6 +1,6 @@
 # <copyright>
+# (c) Copyright 2020-2021 Autumn Patterson
 # (c) Copyright 2021 Cardinal Peak Technologies, LLC
-# (c) Copyright 2020 Autumn Samantha Jeremiah Patterson
 #
 # This program is free software: you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the
@@ -16,6 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # </copyright>
 
+import io
 import os
 import subprocess
 import sys
@@ -40,7 +41,7 @@ class OutputTee:
 
     def _consumerThread(self, myfilename):
         buf = ""
-        with open(myfilename, 'r', 0) as myfd:
+        with io.TextIOWrapper(open(myfilename, 'rb', 0), write_through=0) as myfd:
             myfd.seek(0)
             while (self.threadsOpen[myfilename] and self.executing) or len(buf):
                 buf = myfd.read(2048)
@@ -65,7 +66,7 @@ class OutputTee:
 
     def _init_thread_local(self):
         self._locals.filename = "{}/{}".format(self.tempdir, threading.currentThread().getName())
-        self._locals.filebuf = open(self._locals.filename, 'wb', 0)
+        self._locals.filebuf = io.TextIOWrapper(open(self._locals.filename, 'wb', 0), write_through=True)
         self._locals.currentResult = None
         self._locals.readerThread = threading.Thread(
             target=self._consumerThread,

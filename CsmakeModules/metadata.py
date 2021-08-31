@@ -297,7 +297,7 @@ class metadata(CsmakeModuleAllPhase):
             return result
 
     def _getSpecifiedLanguages(self):
-        return self.languages.keys()
+        return list(self.languages.keys())
 
     def _getDefinitionInLanguage(self, key, language):
         return self.languages[language][key]
@@ -313,7 +313,7 @@ class metadata(CsmakeModuleAllPhase):
     def _chatAllMetadataInformation(self):
         if self.log.chatter:
             offset = 12
-            for key, value in self.original.iteritems():
+            for key, value in self.original.items():
                 if key == 'version':
                     self.log.chat("%sVersion: %s" % (
                         " " * offset,
@@ -343,14 +343,14 @@ class metadata(CsmakeModuleAllPhase):
                 w.metadata.getMetadataId(),
                 str(w) ) )
             self.log.passed()
-            for key in self.env.env.keys():
+            for key in list(self.env.env.keys()):
                 if key.startswith("metadata:"):
                     del self.env.env[key]
-            for key, value in w.metadata.original.iteritems():
+            for key, value in w.metadata.original.items():
                 self.env.env['metadata:%s'%key] = value
             self.env.env['metadata:version'] = w.metadata.version['primary']
             return w.metadata.original
-        for key, value in options.iteritems():
+        for key, value in options.items():
             if key.startswith("**"):
                 if key == '**use-parent-filetracking':
                     self.files = currentFileTracking

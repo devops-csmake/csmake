@@ -79,12 +79,12 @@ class EnsureAllPythonTested(CsmakeAspect):
         for classResult in step.olderCoverageResults:
             fullpath = os.path.normpath(os.path.join(
                 self.env.env['WORKING'],
-                classResult[u'filename']))
+                classResult['filename']))
             if fullpath in filesInTest:
                 del filesInTest[fullpath]
         if len(filesInTest) != 0:
             self._fixResultsToFailed(step.log)
-            for entry in filesInTest.keys():
+            for entry in list(filesInTest.keys()):
                 self.log.error("File '%s' not covered in unit testing", entry)
             self.log.failed()
             return None

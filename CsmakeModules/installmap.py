@@ -116,7 +116,7 @@ class installmap(CsmakeModuleAllPhase):
         result = []
 
         #Parse the lists
-        for key, value in options.iteritems():
+        for key, value in options.items():
             parts = key.split('_')
             if len(parts) >= 2:
                 section = parts[0]
@@ -129,7 +129,7 @@ class installmap(CsmakeModuleAllPhase):
 
         #Parse the maps
         mapDefinitions = {}
-        for key, value in self.definitions['map'].iteritems():
+        for key, value in self.definitions['map'].items():
             mapDefinitions[key] = {}
             parts = value.strip().split('\n')
             for part in parts:

@@ -38,5 +38,5 @@ class TestOnExitHandler(CsmakeModule):
         return True
 
     def _onExit(self):
-        print "_onExit called"
+        print("_onExit called")
 
