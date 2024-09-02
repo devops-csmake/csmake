@@ -1,5 +1,5 @@
 # <copyright>
-# (c) Copyright 2020-2021 Autumn Patterson
+# (c) Copyright 2020-2021,24 Autumn Patterson
 # (c) Copyright 2021 Cardinal Peak Technologies, LLC
 #
 # This program is free software: you can redistribute it and/or modify it
@@ -51,8 +51,10 @@ class OutputTee:
                 try:
                     self.actual.write(buf)
                     self.actual.flush()
-                except:
+                except Exception as e:
                     sys.stderr.write("Couldn't write actual: " + buf + "\n")
+                    sys.stderr.write(str(e))
+                    sys.stderr.write(str(self.actual))
                     sys.stderr.flush()
             else:
                 buf = myfd.read(2048)
@@ -111,7 +113,8 @@ class OutputTee:
             except:
                 pass
         try:
-            self.actual.close()
+            if sys.stdout != self.actual:
+                self.actual.close()
         except:
             pass
         try:

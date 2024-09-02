@@ -1,137 +1,275 @@
 # csmake
 Completely Specified Make (csmake) tool - modular build scripting tool
 
-# Overview and Motivation
-Most build tools (such as make, ant, maven, etc.) are centered around the idea
-of delivering one or a handful of results (build artefacts) based around a
-small set of tools or a single development path.  In practice, what we find
-are a couple of consequences because of this.  First, there are many things
-these build tools "know" how to do intrinsically.  In other words, they are
-built around the 80% of projects that will follow a particular
-build/development sequence.  While these intrinsic pieces are helpful to
-developers in the tool's sweet spot, often these tend to get in the way of
-understanding of the build specification, maintainability of the build
-specification, and the ability to add more automated processes to the tooling
-that fall soundly outside of the sweet spot.  Second, a given build tool only
-handles one or a couple of parts of the product lifecycle, leaving users to
-need other tools to automate other pieces of the process (usually shell
-scripts - if anything at all).
+# Quick Start
+If you check out the project from git, you can run:
 
-Consider, if make sufficed for all building processes for all time and
-eternity, why does ant or maven exist?  If make covered enough steps of the
-entire development cycle, why does scons and automake exist?  One could simply
-argue (incorrectly) that this is duplication of effort, the authors didn't
-want to take the time to learn the tool so they recapitulated it.  It's clear
-to see, given the popularity of ant and maven in some development circles
-(namely Java, which is their sweet spot), that make either didn't suffice for
-the needs of these developers, or these tools surpassed make in some way to
-make their jobs easier.  In fact, if we look beyond compiled languages to
-Python, Ruby, etc. we find that we diverge greatly from the traditional
-developer workflow tools.  I'll pick on Python because the state of affairs
-here is the bleakest (but rake for Ruby exists, let's not forget...).
-Distutils, setuptools, pip, virtualenv, setup.py, TOX, unittest, PyPI, Wheels,
-Eggs, PEPs overriding other PEPs on things like tracking installation of
-python modules, and on it goes, a never-ending march to reimplement every
-other conceivable tool, wrapper, concept to fit everything you could ever
-possibly conceive of doing - until the new next thing is conceived - something
-these tools don't yet support like - gasp - delivering a man page?  Good
-luck... Python developers have recapitulated the problem of tool
-specialization in spades.  All these various build/developer tools all solve
-specific problems and like make, ant, etc., and all have been pushed and
-stretched way beyond their sweet spots (e.g., using pip for production
-builds - in my option this was never Mr. Bicking's purpose for pip).  When it comes to
-packaging, forget about it - every format has a very specific tool chain and an
-environment required for building - and cross platform or even distros - well,
-you're signing up for a lot of hardship and brain damage - not to mention
-reading, lots and lots of reading.
+	`./csmake --help`
 
-So, is the alternative a tool that is so generic it does nothing at all?
-Isn't that the rub?  What if the answer was almost yes?  Enter, csmake.
+to get the list of flags you can pass csmake.  To see the commands that are available
+for the build, You can run:
 
-csmake provides a developer four basic pieces that every product large and
-small needs:
-    - A means to specify the build - csmake uses (abuses) the Python (ne
-Windows) ini format.
-    - A way to say what you are building - csmake provides support for metadata
-natively
-    - A way to track files through a build process - csmake provides a way to
-annotate steps (sections) with file tracking and doesn't require that sections
-participate in the tracking
-    (In other words, file tracking is informative, orthogonal, and optional
-unless your module(s) use the file tracking information directly)
-    - A way to easily implement custom steps - csmake is extremely modular, so
-much so that almost everything is a module (there's your almost
-nothing....without any modules csmake literally does nothing).
-csmake also provides a developer some modern conveniences:
-    - Similar to maven's idea of workflow, csmake has phases and sequences of
-phases
-    - Unlike maven's idea of workflow, csmake's phases and order are not
-dictated by the tool
-    - Similar to make's idea of commands or entry points, csmake has commands
-(and "multicommands" so you can essentially build an ad-hoc command on the
-command-line)
-    - Similar to make's (and most build tools) idea of context sensitive
-execution, csmake uses the "csmakefile" in the current working directory
-(barring further direction)
-    - Similar to most build tools, csmake can do what most developers would
-need, or expect if they just typed the command "csmake", provided the
-csmakefile defines the proper default behaviors
-    - Modules and builds are self-documenting - the documentation is available
-from the command-line
-    (--help, --help --verbose, --list-phases, --list-commands, --list-type,
---list-types)
-    - Modules are object-oriented (full python classes and objects)
-    - It's quite simple to deliver a library of csmake modules
-    - Modules can be defined as aspects that participate in join points and
-control flow - providing for separation of concerns and builds that can self-
-heal
-    (Example: I have a flaky git....ok, create an aspect that will catch a git
-failure and try it again in some cases - no changes to the actual git module
-required)
-    (Example: I have a problem where I need to temporarily add configuration
-with a shell script before I execute a section but I can't let it linger for
-the whole build - ok, decorate the section with a ShellAspect that modifies
-the configuration at the start of the section and changes it back at the end -
-again, no changes to the module required)
+	`./csmake --list-commands`
 
-With this flexibility csmakefiles have been written that:
-    - Recreate diskimage-builder in such a manner that the build process was so
-flexible, new steps could be added, builds could be halted and reused half way
-though the process, and steps like pushing builds to archives could be added
-to a singular build process.
-    - Packaging libraries as debs (and tarballs, and wheels, and soon...rpms)
-using the same tooling (the csmake installmap and Packager modules)
-    - Also, the packaging is part of the build process.  (e.g., csmake build
-test package - would build, then test, then package the results)
-    - Builds full vm images without the use of a tool like diskimage-builder
-(and archives the results, etc.)
-    - Generates the proper file staging, renaming, and xml description for HP's
-SMTA delivery process
-    - Manages expiration and storage (e.g. user access) policy for artefact
-storage that can be enforced by a build directly or by a "centurion" script
-that will reset the policy separate from the build
-    - Allow artefacts to be managed and "binned" in the storage based on quality
-testing (i.e., promotion scripts).
-    - Packages virtualenvs as a tarball (and would also package them as a debian
-if desired with almost no configuration changes).
-The next sections go into greater details on each of the points above.
+You'll see one called `(default)`.  We will run that command in a moment.  You can also run:
+
+	`./csmake --list-phases`
+
+to see the different phases the tool can utilize for the current build environment.  
+One phase you'll see is `test`.  Go ahead and run:
+	`./csmake test`
+
+You will see a ton of output, along with some code coverage.
+
+Congratulations, you just ran your first, hopefully successful, csmake build.
+
+
+# Installing csmake
+
+Download csmake packages for your particular package manager.
+(NOTE: premade packages forthcoming)
+
+# Creating your first csmakefile
+
+The `csmakefile` in your project top-level directory will tell csmake how to build
+your project.
+
+The structure of a `csmakefile` is a simple header-parameters style format (not unlike
+Ansible or GitHub Actions).  To start to get a feel for how these files work, we will start
+with a very simple, "Hello, World" build.
+
+We will start with a "command" section, a command is an entry-point into the build or the
+top level section that describes how a build should function.
+
+The default entrypoint is specified with `[command@]`.  We will get more into what that means
+in a moment.  For now, open your editor and enter the following command block:
+
+```
+[command@]
+description=Do a hello to the world
+00=print-hello
+```
+
+If we try to run this (just enter `csmake`), you will see a bunch of diagnostic output.  
+The header output is designed to help you isolate the output from each step both
+to have a visually and mechanically searchable log of your build as well as the
+ability to find and fix problems quickly.
+
+You will notice at the end of your build you will see a failure summary:
+
+
+```
+=============================================================================
+=== The following failures have occurred
+=============================================================================
+
+_____________________________________________________________________________
+-----------------------------------------------------------------------------
+-- - - - - - - - - - - - - - --- Stack Trace --- - - - - - - - - - - - - - --
+-----------------------------------------------------------------------------
+--- In Phase: default
+command@
+
+-----------------------------------------------------------------------------
+-- - - - - - - - - - - - --- Output From Failure --- - - - - - - - - - - - --
+-----------------------------------------------------------------------------
+
+__________________________________________________________________
+  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (
+------------------------------------------------------------------
++ command@      ---  Begin
+------------------------------------------------------------------
+` EXCEPTION: Attempt to execute step print-hello failed
+` EXCEPTION: KeyError: The requested build section 'print-hello' was not found in the build specification
+
+command@: ERROR    : XXXXXX Step 'print-hello' FAILED XXXXXX
+
+------------------------------------------------------------------
+ .:*~*:._.:*~*:._.:*~*:.   Step: Failed   .:*~*:._.:*~*:._.:*~*:.
+------------------------------------------------------------------
++ command@      ---  End
+------------------------------------------------------------------
+__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)
+
+
+
+
+_____________________________________________________________________________
+=============================================================================
+=== End of failure output and stacks
+=============================================================================
+
+------------------------------------------------------------------
+
+  __   __   __   __   __   __   __   __   __   __   __   __   __   __   __
+ _\/_ _\/_ _\/_ _\/_ _\/_ _\/_ _\/_ _\/_ _\/_ _\/_ _\/_ _\/_ _\/_ _\/_ _\/_
+ \/\/ \/\/ \/\/ \/\/ \/\/ \/\/ \/\/ \/\/ \/\/ \/\/ \/\/ \/\/ \/\/ \/\/ \/\/
+
+     Step: Failed
+------------------------------------------------------------------
+
+     End csmake - version 3.0.0
+------------------------------------------------------------------
+
+ ___  ______  ______  ______  ______  ______  ______  ______  ______  ___
+  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__
+ (______)(______)(______)(______)(______)(______)(______)(______)(______)
+
+```
+
+So, let's fix this.  What we're going to do is add a "Shell" section which will
+allow us to access the system's shell.  Let's add the following section to your
+`csmakefile`
+
+```
+[Shell@print-hello]
+command(default)=echo "Hello, World"
+
+```
+
+What you may notice is that the section names are in the form of a type (`Shell`) 
+and label (`print-hello`) separated by the at `@` symbol.  The `command(default)` value
+will run when we run a "default" phase (which is what runs when you don't specify a phase
+on the command line).
+
+Running `csmake` now will produce the following output:
+```
+ ___  ______  ______  ______  ______  ______  ______  ______  ______  ___
+  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__
+ (______)(______)(______)(______)(______)(______)(______)(______)(______)
+
+
+     Begin csmake - version {INJECT-csmake-version}
+------------------------------------------------------------------
+` WARNING  : Phase 'default' not declared in ~~phases~~ section
+` WARNING  :   Run: csmake --list-type=~~phases~~ for help
+       _   _   _   _   _   _   _   _   _   _   _   _   _   _   _   _
+    ,-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)
+    `-' `-' `-' `-' `-' `-' `-' `-' `-' `-' `-' `-' `-' `-' `-' `-'
+        BEGINNING PHASE: default
+
+__________________________________________________________________
+  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (
+------------------------------------------------------------------
++ command@      ---  Begin
+------------------------------------------------------------------
+
+__________________________________________________________________
+  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (  (
+------------------------------------------------------------------
+++ Shell@print-hello      ---  Begin
+------------------------------------------------------------------
+Hello, World
+
+------------------------------------------------------------------
+ nununununununununununun   Step: Passed   nununununununununununun
+------------------------------------------------------------------
+++ Shell@print-hello      ---  End
+------------------------------------------------------------------
+__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)
+
+
+
+
+------------------------------------------------------------------
+ nununununununununununun   Step: Passed   nununununununununununun
+------------------------------------------------------------------
++ command@      ---  End
+------------------------------------------------------------------
+__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)
+
+
+
+
+        ENDING PHASE: default
+       _   _   _   _   _   _   _   _   _   _   _   _   _   _   _   _
+    ,-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)
+    `-' `-' `-' `-' `-' `-' `-' `-' `-' `-' `-' `-' `-' `-' `-' `-'
+` WARNING  : Phase 'default' not declared in ~~phases~~ section
+` WARNING  :   Run: csmake --list-type=~~phases~~ for help
+
+   SEQUENCE EXECUTED: default
+
+------------------------------------------------------------------
+
+  .--.      .--.      .--.      .--.      .--.      .--.      .--.      .
+:::::.\::::::::.\::::::::.\::::::::.\::::::::.\::::::::.\::::::::.\::::::
+'      `--'      `--'      `--'      `--'      `--'      `--'      `--'
+
+     Step: Passed
+------------------------------------------------------------------
+
+     End csmake - version 3.0.0
+------------------------------------------------------------------
+
+ ___  ______  ______  ______  ______  ______  ______  ______  ______  ___
+  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__
+ (______)(______)(______)(______)(______)(______)(______)(______)(______)
+
+```
+
+If you want to cut the chatter (all the headers and fluff out of the output), you can
+turn the chatter off using `--no-chatter`
+
+So, running `csmake --no-chatter` will return:
+```
+     Begin csmake - version {INJECT-csmake-version}
+` WARNING  : Phase 'default' not declared in ~~phases~~ section
+` WARNING  :   Run: csmake --list-type=~~phases~~ for help
++ command@      ---  Begin
+++ Shell@print-hello      ---  Begin
+Shell@print-hello: WARNING  : _froms and _tos may not work properly: a bytes-like object is required, not 'str'
+Hello, World
+
+++ Step Status: Passed
+++ Shell@print-hello      ---  End
+
++ Step Status: Passed
++ command@      ---  End
+
+        ENDING PHASE: default
+` WARNING  : Phase 'default' not declared in ~~phases~~ section
+` WARNING  :   Run: csmake --list-type=~~phases~~ for help
+
+   SEQUENCE EXECUTED: default
+
+ Step Status: Passed
+
+     End csmake - version 3.0.0
+```
+
+Finally, if you're just wanting to get the build's stdout output, you can accomplish that by
+using the `--quiet` flag.
+
+So, `csmake --quiet` will return
+```
+Hello, World
+```
+
+If you want to read more about the "Shell" type you can always enter:
+
+	`csmake --list-type Shell`
+
+This works for any csmake section type you have installed (the csmake
+core install package is the bare minimum set of types to make csmake useful.  There are
+other packages, such as csmake-swak (swiss army knife), csmake-package, etc.)
 
 ## csmake Build Configurations - csmakefiles
-A csmakefile is simply a csmake build configuration in a python ini format
+As we saw above, a csmakefile is simply a csmake build configuration in a python ini format
 that calls out the various modules that will be used to perform a build.  Each
-section (except for the [\~\~phases\~\~] section) is a reference to a module
+section (except for the `[~~phases~~]` section) is a reference to a type module
 
-For example:
+Adding to our example above:
 ```
 [~~phases~~]
 build=Build the csmake example
 **default=build
 
-[command@my-command]
-0000=do-hello
+[command@]
+0000=print-hello
 
-[Shell@do-hello]
-command=set -eux
+[Shell@print-hello]
+command(build)=set -eux
    echo "Hello"
    echo "World"
 ```
@@ -139,17 +277,21 @@ command=set -eux
 This csmakefile has three sections, one is the special "phases" section, and
 two other sections.  The section header contains a label which calls out the
 module that should be executed, e.g., "command" and "Shell", an '@' symbol,
-followed by an identifier for the section, e.g., "my-command" and "do-hello".
+followed by an identifier for the section, e.g., "print-hello".
 csmake will execute "command" sections from the command-line.  If a specific
 command isn't called out on the command line, csmake will look for a default
 command section (either [command@] or [command@default]) failing that, it will
-pick a command section to execute.  The modules define what key/value pairs
-should be used with the section.  As you can see from the example above,
+pick a command section to execute, if one is not specified.  The modules define 
+what key/value pairs should be used with the section.  As you can see from the example above,
 python ini is fairly free-flowing, allowing multi-line values, providing a
 free flowing form for things like specifying short shell scripts for example.
 You can see what a specific module expects for key/value pairs by typing:
 csmake --list-command=Shell, for example, which would give you the module
 documentation for Shell.
+
+One thing to notice, we changed `command(default)` to `command(build)` in the "Shell" section
+We also added the "phases" section and declared the default phase to be "build".  So, now
+when we build next time, instead of the "default" phase we will be using the "build" phase.
 
 So, if the above csmakefile was in your current working directory and you type
 the command:
@@ -164,7 +306,7 @@ You would get several "chunks" of output
  ___  ______  ______  ______  ______  ______  ______  ______  ______  ___
   __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__
  (______)(______)(______)(______)(______)(______)(______)(______)(______)
-     Begin csmake - version 1.5.7
+     Begin csmake - version 3.0.0
 ------------------------------------------------------------------
        _   _   _   _   _   _   _   _   _   _   _   _   _   _   _   _
     ,-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)-(_)
@@ -210,45 +352,11 @@ __)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)__)
 '      `--'      `--'      `--'      `--'      `--'      `--'      `--'
      csmake: Passed
 ------------------------------------------------------------------
-     End csmake - version 1.5.7
+     End csmake - version 3.0.0
 ------------------------------------------------------------------
  ___  ______  ______  ______  ______  ______  ______  ______  ______  ___
   __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__  __)(__
  (______)(______)(______)(______)(______)(______)(______)(______)(______)
-```
-
-If you use the "quiet" flag, you just get the shell output:
-```
-% csmake --quiet
-+ echo Hello
-Hello
-+ echo World
-World
-```
-
-Or if you use the "no-chatter" flag, you just get the bare bones "signposts"
-for each block of execution:
-```
-% csmake --no-chatter
-     Begin csmake - version 1.5.7
-         BEGINNING PHASE: build
-             Build the csmake example
-+ command@my-command      ---  Begin
-++ Shell@do-hello      ---  Begin
-+ echo Hello
-Hello
-+ echo World
-World
-++ Step Status: Passed
-++ Shell@do-hello      ---  End
-+ Step Status: Passed
-+ command@my-command      ---  End
-         ENDING PHASE: build
-             Build the csmake example
-   SEQUENCE EXECUTED: build
-     Build the csmake example
- Step Status: Passed
-     End csmake - version 1.5.7
 ```
 
 ## Metadata in csmake
@@ -421,6 +529,120 @@ of what format or group the file is in).  <(text:man-page)> would denote a
 text file that has the purpose of being a man-page (maybe not the best
 choice...) from any group being tracked.
 
+# Overview and Motivation
+Most build tools (such as make, ant, maven, etc.) are centered around the idea
+of delivering one or a handful of results (build artefacts) based around a
+small set of tools or a single development path.  In practice, what we find
+are a couple of consequences because of this.  First, there are many things
+these build tools "know" how to do intrinsically.  In other words, they are
+built around the 80% of projects that will follow a particular
+build/development sequence.  While these intrinsic pieces are helpful to
+developers in the tool's sweet spot, often these tend to get in the way of
+understanding of the build specification, maintainability of the build
+specification, and the ability to add more automated processes to the tooling
+that fall soundly outside of the sweet spot.  Second, a given build tool only
+handles one or a couple of parts of the product lifecycle, leaving users to
+need other tools to automate other pieces of the process (usually shell
+scripts - if anything at all).
+
+Consider, if make sufficed for all building processes for all time and
+eternity, why does ant or maven exist?  If make covered enough steps of the
+entire development cycle, why does scons and automake exist?  One could simply
+argue (incorrectly) that this is duplication of effort, the authors didn't
+want to take the time to learn the tool so they recapitulated it.  It's clear
+to see, given the popularity of ant and maven in some development circles
+(namely Java, which is their sweet spot), that make either didn't suffice for
+the needs of these developers, or these tools surpassed make in some way to
+make their jobs easier.  In fact, if we look beyond compiled languages to
+Python, Ruby, etc. we find that we diverge greatly from the traditional
+developer workflow tools.  I'll pick on Python because the state of affairs
+here is the bleakest (but rake for Ruby exists, let's not forget...).
+Distutils, setuptools, pip, virtualenv, setup.py, TOX, unittest, PyPI, Wheels,
+Eggs, PEPs overriding other PEPs on things like tracking installation of
+python modules, and on it goes, a never-ending march to reimplement every
+other conceivable tool, wrapper, concept to fit everything you could ever
+possibly conceive of doing - until the new next thing is conceived - something
+these tools don't yet support like - gasp - delivering a man page?  Good
+luck... Python developers have recapitulated the problem of tool
+specialization in spades.  All these various build/developer tools all solve
+specific problems and like make, ant, etc., and all have been pushed and
+stretched way beyond their sweet spots (e.g., using pip for production
+builds - in my option this was never Mr. Bicking's purpose for pip).  When it comes to
+packaging, forget about it - every format has a very specific tool chain and an
+environment required for building - and cross platform or even distros - well,
+you're signing up for a lot of hardship and brain damage - not to mention
+reading, lots and lots of reading.
+
+So, is the alternative a tool that is so generic it does nothing at all?
+Isn't that the rub?  What if the answer was almost yes?  Enter, csmake.
+
+csmake provides a developer four basic pieces that every product large and
+small needs:
+    - A means to specify the build - csmake uses (abuses) the Python (ne
+Windows) ini format.
+    - A way to say what you are building - csmake provides support for metadata
+natively
+    - A way to track files through a build process - csmake provides a way to
+annotate steps (sections) with file tracking and doesn't require that sections
+participate in the tracking
+    (In other words, file tracking is informative, orthogonal, and optional
+unless your module(s) use the file tracking information directly)
+    - A way to easily implement custom steps - csmake is extremely modular, so
+much so that almost everything is a module (there's your almost
+nothing....without any modules csmake literally does nothing).
+csmake also provides a developer some modern conveniences:
+    - Similar to maven's idea of workflow, csmake has phases and sequences of
+phases
+    - Unlike maven's idea of workflow, csmake's phases and order are not
+dictated by the tool
+    - Similar to make's idea of commands or entry points, csmake has commands
+(and "multicommands" so you can essentially build an ad-hoc command on the
+command-line)
+    - Similar to make's (and most build tools) idea of context sensitive
+execution, csmake uses the "csmakefile" in the current working directory
+(barring further direction)
+    - Similar to most build tools, csmake can do what most developers would
+need, or expect if they just typed the command "csmake", provided the
+csmakefile defines the proper default behaviors
+    - Modules and builds are self-documenting - the documentation is available
+from the command-line
+    (--help, --help --verbose, --list-phases, --list-commands, --list-type,
+--list-types)
+    - Modules are object-oriented (full python classes and objects)
+    - It's quite simple to deliver a library of csmake modules
+    - Modules can be defined as aspects that participate in join points and
+control flow - providing for separation of concerns and builds that can self-
+heal
+    (Example: I have a flaky git....ok, create an aspect that will catch a git
+failure and try it again in some cases - no changes to the actual git module
+required)
+    (Example: I have a problem where I need to temporarily add configuration
+with a shell script before I execute a section but I can't let it linger for
+the whole build - ok, decorate the section with a ShellAspect that modifies
+the configuration at the start of the section and changes it back at the end -
+again, no changes to the module required)
+
+With this flexibility csmakefiles have been written that:
+    - Recreate diskimage-builder in such a manner that the build process was so
+flexible, new steps could be added, builds could be halted and reused half way
+though the process, and steps like pushing builds to archives could be added
+to a singular build process.
+    - Packaging libraries as debs (and tarballs, and wheels, and soon...rpms)
+using the same tooling (the csmake installmap and Packager modules)
+    - Also, the packaging is part of the build process.  (e.g., csmake build
+test package - would build, then test, then package the results)
+    - Builds full vm images without the use of a tool like diskimage-builder
+(and archives the results, etc.)
+    - Generates the proper file staging, renaming, and xml description for HP's
+SMTA delivery process
+    - Manages expiration and storage (e.g. user access) policy for artefact
+storage that can be enforced by a build directly or by a "centurion" script
+that will reset the policy separate from the build
+    - Allow artefacts to be managed and "binned" in the storage based on quality
+testing (i.e., promotion scripts).
+    - Packages virtualenvs as a tarball (and would also package them as a debian
+if desired with almost no configuration changes).
+
 ### (next parts to add)
     Examples
     Basic workflow/theory of operation
@@ -429,6 +651,7 @@ choice...) from any group being tracked.
 
 <sub>This material is under the GPL v3 license:
 
+<sub>(c) Copyright 2024 Autumn Patterson
 <sub>(c) Copyright 2017 Hewlett Packard Enterprise Development LP
 
 <sub>This program is free software: you can redistribute it and/or modify it
