@@ -75,10 +75,10 @@ classifiers=
     License :: OSI Approved :: GNU General Public License v3 (GPLv3)
 **files=
     <bin (python:script)> csmake,
-    <Csmake (python:package)>  Csmake/*.py,
+    <Csmake (python:package)>  CsmakeCore/*.py,
     <CsmakeModules (python:csmake-modules)> CsmakeModules/*.py,
     <man (groff:man-source)> docs/*.*.roff,
-    <vendor (python-vendor:python-packages)> Csmake/_vendor/*
+    <vendor (python-vendor:python-packages)> CsmakeCore/_vendor/*
 
 [copyright@csmake-copyright]
 disclaimer=
@@ -192,19 +192,19 @@ map_bin_files=
    group:{root}
    permissions: 755
 map_Csmake=
-   map: <Csmake> -(1-1)-> {PYTHON}/Csmake/[~~file~~]
+   map: <Csmake> -(1-1)-> {PYTHON}/CsmakeCore/[~~file~~]
    copyright: csmake-copyright, csmake-cpt-copyright
    owner:{root}
    group:{root}
    permissions: 644
 map_vendor=
-   map: <vendor> -(1-1)-> {PYTHON}/Csmake/_vendor/[~~file~~]
+   map: <vendor> -(1-1)-> {PYTHON}/CsmakeCore/_vendor/[~~file~~]
    copyright: vendor-coverage-orig,vendor-coverage-current
    owner:{root}
    group: {root}
    permissions: 644
 map_CsmakeModules=
-   map: <CsmakeModules> -(1-1)-> {PYTHON}/Csmake/CsmakeModules/[~~file~~]
+   map: <CsmakeModules> -(1-1)-> {PYTHON}/CsmakeCore/CsmakeModules/[~~file~~]
    copyright: csmake-copyright, csmake-cpt-copyright
    owner:{root}
    group:{root}
@@ -279,28 +279,28 @@ description=Create and package a signed deb and rpm
 # Testing definitions
 
 [TestPython@test-FileManager]
-test-dir=Csmake/tests/FileManager/
+test-dir=CsmakeCore/tests/FileManager/
 test=testFileManager_*.py
-source-dir=Csmake/
-resource-dir=%(WORKING)s/Csmake/tests/FileManager
+source-dir=CsmakeCore/
+resource-dir=%(WORKING)s/CsmakeCore/tests/FileManager
 
 [TestPython@test-FileInstance]
-test-dir=Csmake/tests/FileManager/
+test-dir=CsmakeCore/tests/FileManager/
 test=testFileInstance_*.py
-source-dir=Csmake/
-resource-dir=%(WORKING)s/Csmake/tests/FileManager
+source-dir=CsmakeCore/
+resource-dir=%(WORKING)s/CsmakeCore/tests/FileManager
 
 [TestPython@AllFileTrackingTests]
-test-dir=Csmake/tests/FileManager/
+test-dir=CsmakeCore/tests/FileManager/
 test=test*_*.py
-source-dir=Csmake/
-resource-dir=%(WORKING)s/Csmake/tests/FileManager
+source-dir=CsmakeCore/
+resource-dir=%(WORKING)s/CsmakeCore/tests/FileManager
 
 [TestPython@AllCsmakeModuleTests]
-test-dir=Csmake/tests/CsmakeModule
+test-dir=CsmakeCore/tests/CsmakeModule
 test=test*_*.py
-source-dir=Csmake/
-resource-dir=%(WORKING)s/Csmake/tests/CsmakeModule
+source-dir=CsmakeCore/
+resource-dir=%(WORKING)s/CsmakeCore/tests/CsmakeModule
 
 [command@test]
 description=Run testing

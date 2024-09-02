@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # </copyright>
-from Csmake.CsmakeAspect import CsmakeAspect
+from CsmakeCore.CsmakeAspect import CsmakeAspect
 import os.path
 import os
 import fnmatch
