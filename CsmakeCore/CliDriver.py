@@ -1,5 +1,5 @@
 # <copyright>
-# (c) Copyright 2019,2021 Autumn Patterson
+# (c) Copyright 2019,2021,2024 Autumn Patterson
 # (c) Copyright 2021 Cardinal Peak Technologies, LLC
 # (c) Copyright 2017 Hewlett Packard Enterprise Development LP
 #
@@ -18,11 +18,14 @@
 # </copyright>
 import atexit
 import traceback
-import imp
+try:
+    import imp
+except:
+    import importlib as imp
 import pkgutil
 import types
 import time
-from os import environ
+from os import environ, getcwd
 from sys import stdout, stderr
 import sys
 import os
@@ -78,7 +81,10 @@ class CliDriver(object):
         self.log.endResult = lambda: 1
         self.log.endAll = lambda: 1
         self.log.finished = lambda: 1
-        self.cwd = environ['PWD']
+        try:
+            self.cwd = environ['PWD']
+        except KeyError:
+            self.cwd = getcwd()
         self.oldcwd = self.cwd
         sys.meta_path.append(self)
         self.environment = Environment(self)
