@@ -1,6 +1,23 @@
 # csmake
 Completely Specified Make (csmake) tool - modular build scripting tool
 
+# Quick Start
+If you check out the project from git, you can run:
+
+	`./csmake --help-long`
+
+to get the list of flags you can pass csmake.  You can then run:
+
+	`./csmake --list-phases
+
+to see the different phases the tool can utilize for the current build environment.
+One phase you'll see is `test`.  Go ahead and run:
+	`./csmake test
+
+
+
+
+
 # Overview and Motivation
 Most build tools (such as make, ant, maven, etc.) are centered around the idea
 of delivering one or a handful of results (build artefacts) based around a
