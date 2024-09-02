@@ -15,9 +15,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # </copyright>
-from Csmake.CsmakeModuleAllPhase import CsmakeModuleAllPhase
-from Csmake.FileManager import MetadataFileTracker
-from Csmake.MetadataManager import MetadataWarning, MetadataCurrent
+from CsmakeCore.CsmakeModuleAllPhase import CsmakeModuleAllPhase
+from CsmakeCore.FileManager import MetadataFileTracker
+from CsmakeCore.MetadataManager import MetadataWarning, MetadataCurrent
 import re
 import copy
 
