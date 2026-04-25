@@ -1,0 +1,78 @@
+# <copyright>
+# (c) Copyright 2026 Autumn Patterson
+#
+# This program is free software: you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by the
+# Free Software Foundation, either version 3 of the License, or (at your
+# option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
+# Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# </copyright>
+
+[metadata@test-manytoone-substitution]
+name=test-manytoone-substitution
+version=0.0.0
+description=Spec tests for *-1 map substitution correctness
+
+# Create two real source files so the tracker can validate and register them.
+[Shell@create-agreeing-source-files]
+**yields-files=<srcs (c-source:compile)> fake_a.c
+    <srcs (c-source:compile)> fake_b.c
+command=touch %(RESULTS)s/fake_a.c %(RESULTS)s/fake_b.c
+
+# Bug regression: the to-spec carries type='c-source' — the same value every
+# from already has.  [~~type~~] in the output path should resolve to 'c-source'.
+# The bug in _fromManyMapSubstitutions caused a spurious IndeterminateSubstitution
+# error here because the else-branch created a conflict dict on two equal values.
+[Shell@map-agreeing-type-many-to-one]
+**maps=<srcs (c-source:compile)> -(*-1)-> <srcs (c-source:library)> [~~type~~]_output.a
+command=for map in $_MAPPING
+    do
+        for to in $(_tos $map)
+        do
+            touch $to
+        done
+    done
+
+[Shell@cleanup-agreeing]
+command=rm -f %(RESULTS)s/fake_a.c %(RESULTS)s/fake_b.c %(RESULTS)s/c-source_output.a
+
+[command@test-manytoone-type-agrees]
+description=*-1 map where froms and to-spec agree on the substituted key value
+000=create-agreeing-source-files
+001=map-agreeing-type-many-to-one
+002=cleanup-agreeing
+
+
+# Create two files with DIFFERENT types to produce a real conflict in the tracker.
+[Shell@create-mixed-source-files]
+**yields-files=<mixed (c-source:compile)> mixed_a.c
+    <mixed (c-header:compile)> mixed_b.h
+command=touch %(RESULTS)s/mixed_a.c %(RESULTS)s/mixed_b.h
+
+# The to-spec provides type='elf-object', resolving the conflict.
+# [~~type~~] should resolve to 'elf-object', not raise IndeterminateSubstitution.
+[Shell@map-conflict-resolved-by-to-spec]
+**maps=<mixed> -(*-1)-> <mixed (elf-object:library)> [~~type~~]_output.a
+command=for map in $_MAPPING
+    do
+        for to in $(_tos $map)
+        do
+            touch $to
+        done
+    done
+
+[Shell@cleanup-mixed]
+command=rm -f %(RESULTS)s/mixed_a.c %(RESULTS)s/mixed_b.h %(RESULTS)s/elf-object_output.a
+
+[command@test-manytoone-conflict-resolved]
+description=*-1 map where to-spec resolves a type conflict from froms
+000=create-mixed-source-files
+001=map-conflict-resolved-by-to-spec
+002=cleanup-mixed
