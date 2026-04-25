@@ -302,11 +302,24 @@ test=test*_*.py
 source-dir=CsmakeCore/
 resource-dir=%(WORKING)s/CsmakeCore/tests/CsmakeModule
 
+[TestPython@test-SecretProvider]
+test-dir=CsmakeCore/tests/SecretProvider/
+test=testSecretProvider_*.py
+source-dir=CsmakeCore/
+resource-dir=%(WORKING)s/CsmakeCore/tests/SecretProvider
+
+[TestPython@AllSecretProviderTests]
+test-dir=CsmakeCore/tests/SecretProvider/
+test=test*_*.py
+source-dir=CsmakeCore/
+resource-dir=%(WORKING)s/CsmakeCore/tests/SecretProvider
+
 [command@test]
 description=Run testing
 000=test-FileInstance
 001=test-FileManager
 002=AllCsmakeModuleTests
+003=AllSecretProviderTests
 
 [command@test-filetracker]
 description=Run all file tracker testing
@@ -315,3 +328,7 @@ description=Run all file tracker testing
 [command@test-csmakemodule]
 description=Run all csmakemodule unit tests
 000=AllCsmakeModuleTests
+
+[command@test-secretprovider]
+description=Run all secret provider unit tests
+000=AllSecretProviderTests

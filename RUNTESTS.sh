@@ -272,6 +272,26 @@ phase: aspect, end"
 #Test nested csmake calls
 dotest-default test-nested test-nested.csmake build
 
+#Test secrets
+# Generate the obfuscated fixture file from the plaintext source using the test credential.
+# The same credential is passed as CSMAKE_TEST_OBF_CRED when running the obfuscated test.
+CSMAKE_TEST_OBF_CRED="secrets-test-cred-do-not-use"
+python3 -c "
+from CsmakeCore.SecretProvider import ObfuscatedFileProvider
+ObfuscatedFileProvider.obfuscate(
+    'test-secrets/obf-source.json',
+    'test-secrets/test.obf',
+    '$CSMAKE_TEST_OBF_CRED')"
+dotest-cmp secrets-default-namespace test-secrets.csmake default-namespace build "hunter2"
+dotest-cmp secrets-colon-default test-secrets.csmake colon-default build "hunter2"
+dotest-cmp secrets-named-namespace test-secrets.csmake named-namespace build "hunter2"
+dotest-cmp secrets-embedded test-secrets.csmake embedded build "prefix-hunter2-suffix"
+dotest-cmp secrets-union-overwrites test-secrets.csmake union-overwrites build "second"
+dotest-cmp secrets-union-adds test-secrets.csmake union-adds build "from-first-from-second"
+CSMAKE_TEST_OBF_CRED=$CSMAKE_TEST_OBF_CRED dotest-cmp secrets-obfuscated test-secrets.csmake obfuscated build "obfuscated-value"
+dotest-fail secrets-missing-key test-secrets.csmake missing-key build
+dotest-fail secrets-missing-namespace test-secrets.csmake missing-namespace build
+
 #####################################
 # Testing footer
 echo ""
