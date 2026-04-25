@@ -244,6 +244,11 @@ dotest file-before-metadata test-filetracking.csmake file-before-metadata build
 dotest-cmp files-kept-thru-metadata test-filetracking.csmake files-kept-thru-metadata build "RUNTESTS.sh"
 dotest-cmp ensure-files-not-kept-thru-metadata test-filetracking.csmake ensure-files-not-kept-thru-metadata build ""
 
+#Test *-1 map substitution - froms and to-spec agree on the substituted key value
+dotest manytoone-type-agrees test-manytoone-substitution.csmake test-manytoone-type-agrees build
+#Test *-1 map substitution - to-spec resolves a type conflict from froms
+dotest manytoone-conflict-resolved test-manytoone-substitution.csmake test-manytoone-conflict-resolved build
+
 #Test TestPython
 dotest-default test-TestPython test-TestPython.csmake
 dotest-fail test-TestPython-failure test-TestPython.csmake show-failure test

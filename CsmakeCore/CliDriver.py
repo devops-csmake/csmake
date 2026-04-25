@@ -20,8 +20,27 @@ import atexit
 import traceback
 try:
     import imp
-except:
-    import importlib as imp
+except ImportError:
+    # imp was removed in Python 3.12; provide a shim for the three entry points
+    # used below: acquire_lock, release_lock, and load_source.
+    import threading as _threading
+    import importlib.util as _importlib_util
+
+    class _ImpShim(object):
+        def __init__(self):
+            self._lock = _threading.RLock()
+        def acquire_lock(self):
+            self._lock.acquire()
+        def release_lock(self):
+            self._lock.release()
+        def load_source(self, name, path):
+            spec = _importlib_util.spec_from_file_location(name, path)
+            module = _importlib_util.module_from_spec(spec)
+            sys.modules[name] = module
+            spec.loader.exec_module(module)
+            return module
+
+    imp = _ImpShim()
 import pkgutil
 import types
 import time

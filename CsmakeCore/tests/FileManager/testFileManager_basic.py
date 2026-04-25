@@ -223,6 +223,41 @@ class testFileManager_basic(unittest.TestCase):
         #Test string rep of FileMapper
         str(cut)
 
+    def test_manyToOneSubstitutionWithMatchingToSpecKeyValue(self):
+        # Bug regression: when all froms agree on a key value and the to-spec
+        # carries the SAME value for that key, [~~key~~] in the output path
+        # should resolve successfully.  The old else-branch in
+        # _fromManyMapSubstitutions was creating a spurious conflict dict on
+        # equal values, which caused a false IndeterminateSubstitution error.
+        cut = self._createaCUT()
+        cut.addFileDeclaration("<myid(test:testing)> *.ext")
+        # to-spec has type='test' — same as every from; path uses [~~type~~]
+        result = cut.parseFileMap(
+            "<(test:testing)> -(*-1)-> <(test:output)> [~~type~~]_output.lib")
+        for froms, tos in result.iterspecs():
+            self.assertEqual(tos[0]['relLocation'], 'test_output.lib')
+
+    def test_manyToOneSubstitutionConflictUnresolvedByToSpecRaisesError(self):
+        # When froms conflict on a substitution key and the to-spec provides no
+        # resolution for it, IndeterminateSubstitution must still be raised.
+        cut = self._createaCUT()
+        cut.addFileDeclaration("<myid(test:testing)> test_*.ext")
+        cut.addFileDeclaration("<otherid(other:testing)> other_*.ext")
+        with self.assertRaises(ValueError):
+            cut.parseFileMap("*.ext -(*-1)-> [~~type~~]_output.lib")
+
+    def test_manyToOneSubstitutionConflictResolvedByToSpec(self):
+        # When froms conflict on a key but the to-spec supplies a definitive
+        # non-substitution value for that same key, the to-spec value should
+        # resolve the conflict and substitution should succeed.
+        cut = self._createaCUT()
+        cut.addFileDeclaration("<myid(test:testing)> test_*.ext")
+        cut.addFileDeclaration("<otherid(other:testing)> other_*.ext")
+        result = cut.parseFileMap(
+            "*.ext -(*-1)-> <(lib:output)> [~~type~~]_output.lib")
+        for froms, tos in result.iterspecs():
+            self.assertEqual(tos[0]['relLocation'], 'lib_output.lib')
+
     def test_reFileDeclaration(self):
         cut = self._createaCUT()
         result = cut.addFileDeclaration("<myid (test:testing)> ~~test_[^.1][.]ext")

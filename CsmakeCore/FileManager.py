@@ -171,7 +171,7 @@ class IndexedFileEntry:
         if self.currentPrecedenceKey is None:
             raise ValueError("setCurrentPrecedenceKey must be called first")
         return self.getPrecedence(self.currentPrecedenceKey) \
-               == other.getPrecedence(self.currentPreceedenceKey)
+               == other.getPrecedence(self.currentPrecedenceKey)
 
     def __lt__(self, other):
         if self.currentPrecedenceKey is None:
@@ -182,7 +182,7 @@ class IndexedFileEntry:
     def __gt__(self, other):
         if self.currentPrecedenceKey is None:
             raise ValueError("setCurrentPrecedenceKey must be called first")
-        return self.getRecedence(self.currentPrecedenceKey) \
+        return self.getPrecedence(self.currentPrecedenceKey) \
                 > other.getPrecedence(self.currentPrecedenceKey)
 
     def __hash__(self):
@@ -1141,12 +1141,7 @@ class FileManager:
             for key, value in ato.index.items():
                 if '[~~' in value:
                     continue
-                if key not in specCollection:
-                    specCollection[key] = value
-                if specCollection[key] != value or type(value) is list:
-                    specCollection[key] = value
-                else:
-                    specCollection[key] = {'values': [value, specCollection[key]]}
+                specCollection[key] = value
         for ato in tos:
             for locKey in ['location', 'relLocation']:
                 if locKey in ato.index:
