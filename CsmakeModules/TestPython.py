@@ -17,7 +17,10 @@
 # </copyright>
 from CsmakeCore.CsmakeModule import CsmakeModule
 import unittest
-import CsmakeCore._vendor.coverage as coverage
+try:
+    import CsmakeCore._vendor.coverage as coverage
+except ImportError:
+    coverage = None
 import os.path
 import xml.parsers.expat
 
@@ -89,8 +92,9 @@ class TestPython(CsmakeModule):
         self.olderCoverageResults = None
         loader = unittest.TestLoader()
         self.options = options
-        cover = coverage.coverage(branch=True)
-        cover.start()
+        cover = coverage.coverage(branch=True) if coverage is not None else None
+        if cover is not None:
+            cover.start()
         tests = loader.discover(
             self.options['test-dir'],
             self.options['test'],
@@ -99,56 +103,59 @@ class TestPython(CsmakeModule):
             self._giveTestsCsmakeContext(test)
         testRunner = unittest.TextTestRunner(self.log.out(), True, 3)
         result = testRunner.run(tests)
-        cover.stop()
-        omits = [self.options['test-dir']+'/*'] + ignorefileList
-        self.percentCovered = cover.report(
-            file=self.log.out(),
-            omit=omits )
-        coverageXMLFile = os.path.join(
-            self.env.env['RESULTS'],
-            "coverage.out.xml" )
-        cover.xml_report(
-            outfile=coverageXMLFile,
-            omit=omits )
-        #TODO: add more comprehensive parsing
-        lines = []
-        try:
-            with open(coverageXMLFile, 'rb') as coverageFile:
-                parser = xml.parsers.expat.ParserCreate()
-                parser.StartElementHandler = self._xmlStartElementHandler
-                parser.EndElementHandler = self._xmlEndElementHandler
-                parser.CharacterDataHandler = self._xmlCharacterData
-                parser.ParseFile(coverageFile)
-        except:
-            self.log.exception("Failed to read xml coverage file")
-        finally:
-            try:
-                os.remove(coverageXMLFile)
-            except:
-                self.log.exception("Failed to remove the xml coverage file")
-
-        if len(self.classList) > 0:
-            self.olderCoverageResults = self.classList
-
-        if 'xml-report' in options:
+        if cover is None:
+            self.log.info("coverage not available - skipping coverage reporting")
+        else:
+            cover.stop()
+            omits = [self.options['test-dir']+'/*'] + ignorefileList
+            self.percentCovered = cover.report(
+                file=self.log.out(),
+                omit=omits )
+            coverageXMLFile = os.path.join(
+                self.env.env['RESULTS'],
+                "coverage.out.xml" )
             cover.xml_report(
-                outfile=os.path.join(
-                    self.env.env['RESULTS'],
-                    options['xml-report'] ),
+                outfile=coverageXMLFile,
                 omit=omits )
+            #TODO: add more comprehensive parsing
+            lines = []
+            try:
+                with open(coverageXMLFile, 'rb') as coverageFile:
+                    parser = xml.parsers.expat.ParserCreate()
+                    parser.StartElementHandler = self._xmlStartElementHandler
+                    parser.EndElementHandler = self._xmlEndElementHandler
+                    parser.CharacterDataHandler = self._xmlCharacterData
+                    parser.ParseFile(coverageFile)
+            except:
+                self.log.exception("Failed to read xml coverage file")
+            finally:
+                try:
+                    os.remove(coverageXMLFile)
+                except:
+                    self.log.exception("Failed to remove the xml coverage file")
 
-        if 'html-report' in options:
-            cover.html_report(
-                outfile=os.path.join(
-                    self.env.env['RESULTS'],
-                    options['html-report'] ),
-                omit=omits )
-        try:
-            self.coverageResults = cover.get_data()
-        except AttributeError as e:
-            self.log.info("coverage >= v4.0 required to get new coverage results - some dependent modules may not work properly")
+            if len(self.classList) > 0:
+                self.olderCoverageResults = self.classList
 
-        cover.erase()
+            if 'xml-report' in options:
+                cover.xml_report(
+                    outfile=os.path.join(
+                        self.env.env['RESULTS'],
+                        options['xml-report'] ),
+                    omit=omits )
+
+            if 'html-report' in options:
+                cover.html_report(
+                    outfile=os.path.join(
+                        self.env.env['RESULTS'],
+                        options['html-report'] ),
+                    omit=omits )
+            try:
+                self.coverageResults = cover.get_data()
+            except AttributeError as e:
+                self.log.info("coverage >= v4.0 required to get new coverage results - some dependent modules may not work properly")
+
+            cover.erase()
         if result.wasSuccessful():
             self.log.passed()
             return True
