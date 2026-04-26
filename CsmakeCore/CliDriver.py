@@ -1032,7 +1032,7 @@ class CliDriver(object):
                     os.close(self.tty)
                 except:
                     pass
-            os.system('stty sane')
+                os.system('stty sane')
             signal.signal(signal.SIGTTOU, self.ttou_handler)
 
         os._exit(returncode)

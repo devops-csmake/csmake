@@ -23,8 +23,10 @@ set -e
 
 #This is an executable script that executes the
 #csmake testing
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
 TEST_RESULTS=test-results
-export PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$(pwd)"
+export PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}${SCRIPT_DIR}"
 
 #To get a fresh set of test results
 rm -rf $TEST_RESULTS
