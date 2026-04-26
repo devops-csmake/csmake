@@ -991,6 +991,7 @@ class CliDriver(object):
                 self.log.error("XXX Execution of csmake failed")
                 returncode = 1
             self.log.finished()
+            sys.stdout.flush()
             OutputTee.endAll()
             if self.tty is not None:
                 try:
@@ -1031,10 +1032,8 @@ class CliDriver(object):
         #TODO: Add a truncate +/- to allow multiple simultaneous runs
         fakegit = target + '/.git'
         self.fakegit = fakegit
-        subprocess.call(
-            [ 'truncate', '--size', '+1', self.fakegit ],
-            stdout=self.log.out(),
-            stderr=self.log.err() )
+        with open(self.fakegit, 'ab') as _f:
+            _f.write(b'\x00')
 
 
         self.environment.addTransPhase('RESULTS', target)
@@ -1283,10 +1282,10 @@ class CliDriver(object):
 
     def _cleanUp(self, fakegit, target):
         try:
-            subprocess.call([
-                'truncate', '--size', '-1', fakegit ],
-                stdout=self.log.out(),
-                stderr=self.log.err() )
+            size = os.path.getsize(fakegit)
+            if size > 0:
+                with open(fakegit, 'r+b') as _f:
+                    _f.truncate(size - 1)
             if os.path.getsize(fakegit) == 0:
                 os.remove(fakegit)
         except:
