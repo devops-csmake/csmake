@@ -29,7 +29,7 @@ TEST_RESULTS=test-results
 rm -rf $TEST_RESULTS
 mkdir  $TEST_RESULTS
 
-COVERAGE="python -m Csmake._vendor.coverage run -a --branch"
+COVERAGE="python3 -m Csmake._vendor.coverage run -a --branch"
 
 function test-passed {
     echo "========================================================"
@@ -163,7 +163,7 @@ fi
 dounit test-filetracker
 dounit test-csmakemodule
 
-python -m Csmake._vendor.coverage erase
+python3 -m Csmake._vendor.coverage erase
 
 #Specification tests - testing correctness of csmake running specifications
 dotest-default basic-with-build-phase test.csmake build
@@ -281,7 +281,7 @@ echo "         Output is in '$TEST_RESULTS'"
 echo "             Each test has a file named for the test followed by .out"
 echo ""
 echo "     Test Coverage    *Not including unit testing"
-python -m Csmake._vendor.coverage report -m
+python3 -m Csmake._vendor.coverage report -m
 
 echo " "
 echo "nunununununununununununununununununununununununununu"
