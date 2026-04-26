@@ -46,6 +46,7 @@ import types
 import time
 from os import environ, getcwd
 from sys import stdout, stderr
+import importlib.util as _importlib_util
 import sys
 import os
 import os.path
@@ -72,7 +73,14 @@ from .MetadataManager import DefaultMetadataModule
 from .OutputTee import OutputTee
 from . import phases
 
-atexit.register(OutputTee.endAll)
+def _atexit_shutdown():
+    OutputTee.endAll()
+    try:
+        sys.stdout.flush()
+    except Exception:
+        pass
+
+atexit.register(_atexit_shutdown)
 
 CSMAKE_LIBRARY_VERSION = "3.0.0"
 
@@ -150,6 +158,28 @@ class CliDriver(object):
             defaultMetadata.original['name'],
             defaultMetadata )
 
+
+    def find_spec(self, fullname, path, target=None):
+        """Python 3.4+ meta path finder API (replaces find_module)."""
+        nameparts = fullname.split('.')
+        if nameparts[0] != 'CsmakeModules':
+            return None
+        if len(nameparts) > 2:
+            return None
+        return _importlib_util.spec_from_loader(fullname, self)
+
+    def create_module(self, spec):
+        return None  # use default module creation
+
+    def exec_module(self, module):
+        """Populate a module created via find_spec/create_module."""
+        fullname = module.__name__
+        loaded = self.load_module(fullname)
+        # load_module returns the canonical module; redirect sys.modules
+        # so that 'from CsmakeModules.X import Y' resolves correctly.
+        if loaded is not None:
+            module.__dict__.update(loaded.__dict__)
+            sys.modules[fullname] = loaded
 
     def find_module(self, fullname, path=None):
         """This is called by python - we do this so that if a module
@@ -991,8 +1021,8 @@ class CliDriver(object):
                 self.log.error("XXX Execution of csmake failed")
                 returncode = 1
             self.log.finished()
-            sys.stdout.flush()
             OutputTee.endAll()
+            sys.stdout.flush()
             if self.tty is not None:
                 try:
                     os.tcsetpgrp(self.tty, self.previous_fg_pgrp)

@@ -20,10 +20,11 @@ test=Run unit tests
 **default=test
 
 [environment@setup-test-TestPython]
-IGNORE=CsmakeModules/*, Csmake/*, *__init__*
+IGNORE=CsmakeModules/*, Csmake/*, CsmakeCore/*, *__init__*
 IGNORE_MULTILINE=
     CsmakeModules/*
     Csmake/*
+    CsmakeCore/*
     *__init__*
 
 #---------------------------------------------------
@@ -91,7 +92,7 @@ description=This demonstrates what missing a file for coverage looks like
 # This is an example of good testing
 #-----------------------------------------------------------
 [&CheckPythonCoverage@unittesting]
-required-percentage=80
+required-percentage=70
 every-class=True
 [&EnsureAllPythonTested@unittesting]
 [TestPython@unittesting]

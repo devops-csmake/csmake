@@ -41,6 +41,14 @@ class test_example(unittest.TestCase):
         e = subdir_test_example()
         self.assertEqual(e.another(), 5)
 
+    def test_anotherfunc(self):
+        e = example()
+        e.anotherfunc()
+
+    def test_thing(self):
+        e = subdir_test_example()
+        self.assertEqual(e.thing(), 6)
+
     def test_uncovered_example(self):
         e = uncovered_example()
         e.mytest()
