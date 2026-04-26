@@ -131,7 +131,7 @@ description=Test that file mapping is unchecked properly
 ######################################
 # Test line-pad
 [Shell@test-python-with-linepad]
-exec=/usr/bin/python
+exec=python3
 line-pad=**
 command=
  **import sys

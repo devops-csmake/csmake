@@ -27,3 +27,4 @@ class CsmakeModulesModule:
         self.__loader__ = loader
         self.__path__ = []
         self.__name__ = 'CsmakeModules'
+        self.__spec__ = None

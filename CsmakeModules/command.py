@@ -112,7 +112,7 @@ class command(CsmakeModuleAllPhase):
                             parallelpart ) )
                     threads[-1].start()
             for thread in threads:
-                if thread.isAlive():
+                if thread.is_alive():
                     thread.join()
                 if thread.failed():
                     self.log.error("XXXXXX Step '%s' FAILED XXXXXX" % thread.parallelpart)

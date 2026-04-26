@@ -23,7 +23,7 @@ Step 3: Create a simple csmake Module
 
 In the CsmakeModules directory, create a file call TutorialBuildStep.py
 TutorialBuildStep.py
-from Csmake.CsmakeModule import CsmakeModule
+from CsmakeCore.CsmakeModule import CsmakeModule
  
 class TutorialBuildStep(CsmakeModule):
     """Library: Tutorial5
@@ -270,7 +270,7 @@ mv TutorialBuildStep.py ManageProduce.py
 Now, we need to fix the name of the class - open ManageProduce.py in your editor and change the name of the class to ManageProduce.
 
 The top of your file should now look like this:
-from Csmake.CsmakeModule import CsmakeModule
+from CsmakeCore.CsmakeModule import CsmakeModule
  
 class ManageProduce(CsmakeModule):
 
@@ -298,7 +298,7 @@ We have a couple more sections to fill out.  In order for this example to make s
 
 Open the "ManageProduce.py" in your editor and change it to look like this:
 ManageProduce.py
-from Csmake.CsmakeModule import CsmakeModule
+from CsmakeCore.CsmakeModule import CsmakeModule
 import pickle
  
 class ManageProduce(CsmakeModule):
@@ -501,7 +501,7 @@ Obviously, what we have right now is insufficient, unless we hack money into our
 
 In our Tutorial5/CsmakeModules' directory, let's go ahead and open an editor to edit a new file called 'WorkAndGetPaid':
 WorkAndGetPaid.py
-from Csmake.CsmakeModule import CsmakeModule
+from CsmakeCore.CsmakeModule import CsmakeModule
 from CsmakeModules.ManageProduce import ManageProduce
  
 class WorkAndGetPaid(CsmakeModule):

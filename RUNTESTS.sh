@@ -23,13 +23,16 @@ set -e
 
 #This is an executable script that executes the
 #csmake testing
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
 TEST_RESULTS=test-results
+export PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}${SCRIPT_DIR}"
 
 #To get a fresh set of test results
 rm -rf $TEST_RESULTS
 mkdir  $TEST_RESULTS
 
-COVERAGE="python -m Csmake._vendor.coverage run -a --branch"
+COVERAGE="python3 -m CsmakeCore._vendor.coverage run -a --branch"
 
 function test-passed {
     echo "========================================================"
@@ -88,7 +91,7 @@ function dotest-cmp {
     then
         if [ "" == "$5" ]
         then
-            if [ "`wc -c $TEST_RESULTS/$1.out | cut -d' ' -f 1`" == "0" ]
+            if [ "`wc -c < $TEST_RESULTS/$1.out | tr -d ' '`" == "0" ]
             then
                 test-passed
                 return 0
@@ -163,7 +166,7 @@ fi
 dounit test-filetracker
 dounit test-csmakemodule
 
-python -m Csmake._vendor.coverage erase
+python3 -m CsmakeCore._vendor.coverage erase
 
 #Specification tests - testing correctness of csmake running specifications
 dotest-default basic-with-build-phase test.csmake build
@@ -301,7 +304,7 @@ echo "         Output is in '$TEST_RESULTS'"
 echo "             Each test has a file named for the test followed by .out"
 echo ""
 echo "     Test Coverage    *Not including unit testing"
-python -m Csmake._vendor.coverage report -m
+python3 -m CsmakeCore._vendor.coverage report -m
 
 echo " "
 echo "nunununununununununununununununununununununununununu"

@@ -17,7 +17,10 @@
 # </copyright>
 from CsmakeCore.CsmakeAspect import CsmakeAspect
 import unittest
-import CsmakeCore._vendor.coverage as coverage
+try:
+    import CsmakeCore._vendor.coverage as coverage
+except ImportError:
+    coverage = None
 
 class CheckPythonCoverage(CsmakeAspect):
     """Purpose: Fail testing if coverage does not pass the given threshold
@@ -38,6 +41,11 @@ class CheckPythonCoverage(CsmakeAspect):
             self._fixResultsToFailed(result)
 
     def passed__test(self, phase, options, step, stepoptions):
+        if coverage is None:
+            self.log.error("coverage is not available - CheckPythonCoverage requires CsmakeCore._vendor.coverage")
+            self._fixResultsToFailed(step.log)
+            self.log.failed()
+            return None
         requiredPercent = float(options['required-percentage'])
         if requiredPercent > step.percentCovered:
             self._fixResultsToFailed(step.log)
