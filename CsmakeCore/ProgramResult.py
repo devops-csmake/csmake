@@ -21,12 +21,12 @@ from .Reporter import ProgramReporter, NonChattyProgramReporter
 
 class ProgramResult(Result):
 
-    def __init__(self, env, version, resultInfo={}):
+    def __init__(self, env, version, appname='csmake', resultInfo={}):
         Result.__init__(self, env, resultInfo)
         if self.chatter:
-            self.reporter = ProgramReporter(version, self.params['Out'])
+            self.reporter = ProgramReporter(version, appname, self.params['Out'])
         else:
-            self.reporter = NonChattyProgramReporter(version, self.params['Out'])
+            self.reporter = NonChattyProgramReporter(version, appname, self.params['Out'])
 
     def setupTee(self):
         pass

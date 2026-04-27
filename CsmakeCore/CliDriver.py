@@ -542,7 +542,7 @@ class CliDriver(object):
             self.logfile = sys.stdout
         OutputTee.subsumeStream(self.logfile)
         self.logfile = OutputTee
-        self.log = ProgramResult(self.environment, self.scriptVersion, {'Out' : self.logfile })
+        self.log = ProgramResult(self.environment, self.scriptVersion, self.scriptName, {'Out' : self.logfile })
         self.log.setTargetModule(self)
 
     def _getOptions(self):

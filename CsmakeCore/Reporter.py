@@ -61,8 +61,8 @@ _C   = '\033[36m'       # cyan
 _BC  = '\033[1;36m'     # bold cyan
 
 # Decoration widths
-_W  = 67   # standard step width
-_PW = 88   # program-level reporter width (long bars for csmakeci)
+_W  = 88   # step decoration width
+_PW = 88   # program-level reporter width (same; kept separate for subclass overrides)
 _AW = 48   # aspect reporter width
 
 
@@ -377,27 +377,27 @@ class ProgramReporter(Reporter):
 
     STATUS_FORMAT = '{1}\n     {2}: {3}\n'
 
-    def __init__(self, version, out=None):
+    def __init__(self, version, appname='csmake', out=None):
         Reporter.__init__(self, out)
         if _COLOR:
             self.ANNOUNCE_FORMAT = (
-                '\n     ' + _B + '{3}' + _R + ' csmakeci'
+                '\n     ' + _B + '{3}' + _R + ' %s' % appname
                 + _D + ' - version %s' % version + _R + '\n'
             )
         else:
-            self.ANNOUNCE_FORMAT = '\n     {3} csmakeci - version %s\n' % version
+            self.ANNOUNCE_FORMAT = '\n     {3} %s - version %s\n' % (appname, version)
 
 
 class NonChattyProgramReporter(NonChattyReporter):
-    def __init__(self, version, out=None):
+    def __init__(self, version, appname='csmake', out=None):
         NonChattyReporter.__init__(self, out)
         if _COLOR:
             self.ANNOUNCE_FORMAT = (
-                '\n     ' + _B + '{3}' + _R + ' csmakeci'
+                '\n     ' + _B + '{3}' + _R + ' %s' % appname
                 + _D + ' - version %s' % version + _R + '\n'
             )
         else:
-            self.ANNOUNCE_FORMAT = '\n     {3} csmakeci - version %s\n' % version
+            self.ANNOUNCE_FORMAT = '\n     {3} %s - version %s\n' % (appname, version)
 
 
 class AspectReporter(Reporter):
