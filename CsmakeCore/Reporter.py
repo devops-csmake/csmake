@@ -337,8 +337,9 @@ class NonChattyReporter(Reporter):
 class ProgramReporter(Reporter):
     # Long flat rules — csmakeci uses this reporter and benefits from the width.
     if _COLOR:
-        OBJECT_HEADER = '\n  ' + _BC + '━' * _PW + _R + '\n'
-        OBJECT_FOOTER = '\n  ' + _BC + '━' * _PW + _R + '\n'
+        OBJECT_HEADER    = '\n  ' + _BC + '━' * _PW + _R + '\n'
+        OBJECT_FOOTER    = '\n  ' + _BC + '━' * _PW + _R + '\n'
+        STATUS_SEPARATOR = '  ' + _D + '╌' * _PW + _R + '\n'
 
         # ▓ (dark/dense) for pass — visually heavy, green, reads as "solid/complete"
         # ░ (light/sparse) for fail — visually hollow, red, reads as "broken/empty"
@@ -358,8 +359,9 @@ class ProgramReporter(Reporter):
             + _R
         )
     else:
-        OBJECT_HEADER = '\n  ' + '=' * _PW + '\n'
-        OBJECT_FOOTER = '\n  ' + '=' * _PW + '\n'
+        OBJECT_HEADER    = '\n  ' + '=' * _PW + '\n'
+        OBJECT_FOOTER    = '\n  ' + '=' * _PW + '\n'
+        STATUS_SEPARATOR = '  ' + '- ' * (_PW // 2) + '\n'
 
         # # (dense) for pass, ~ (sparse/wavy) for fail — distinguishable without color
         PASS_BANNER = (
@@ -379,11 +381,11 @@ class ProgramReporter(Reporter):
         Reporter.__init__(self, out)
         if _COLOR:
             self.ANNOUNCE_FORMAT = (
-                '\n     ' + _B + '{3}' + _R + ' csmake'
+                '\n     ' + _B + '{3}' + _R + ' csmakeci'
                 + _D + ' - version %s' % version + _R + '\n'
             )
         else:
-            self.ANNOUNCE_FORMAT = '\n     {3} csmake - version %s\n' % version
+            self.ANNOUNCE_FORMAT = '\n     {3} csmakeci - version %s\n' % version
 
 
 class NonChattyProgramReporter(NonChattyReporter):
@@ -391,11 +393,11 @@ class NonChattyProgramReporter(NonChattyReporter):
         NonChattyReporter.__init__(self, out)
         if _COLOR:
             self.ANNOUNCE_FORMAT = (
-                '\n     ' + _B + '{3}' + _R + ' csmake'
+                '\n     ' + _B + '{3}' + _R + ' csmakeci'
                 + _D + ' - version %s' % version + _R + '\n'
             )
         else:
-            self.ANNOUNCE_FORMAT = '\n     {3} csmake - version %s\n' % version
+            self.ANNOUNCE_FORMAT = '\n     {3} csmakeci - version %s\n' % version
 
 
 class AspectReporter(Reporter):
