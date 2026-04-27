@@ -24,14 +24,21 @@ from .phases import phases
 # ---------------------------------------------------------------------------
 # Color / style detection
 #
-# The decoration style is chosen once at import time from the environment:
-#
 #   NO_COLOR=1          disable color and Unicode (https://no-color.org/)
 #   FORCE_COLOR=1       force color even when stdout is not a TTY
-#   CSMAKE_STYLE=plain  same effect as NO_COLOR for csmake output only
+#   CSMAKE_STYLE=plain  same as NO_COLOR but scoped to csmake output
 #
-# Subclass any Reporter and override the class constants to apply a fully
-# custom style without touching this module.
+# Two reporter families are defined below:
+#
+#   Reporter / NonChattyReporter / ProgramReporter / AspectReporter
+#       — csmake's native style: narrower widths, triangle/arrow motif
+#
+#   CsmakeCIReporter / CsmakeCINonChattyReporter / CsmakeCIProgramReporter
+#       — csmakeci's style: wider, filled/translucent block motif
+#
+# Subclass any reporter and override class constants for a custom style.
+# Wire a different family into Result/ProgramResult via env._reporter_class
+# and friends (see Result.py).
 # ---------------------------------------------------------------------------
 
 def _detect_color():
@@ -50,49 +57,53 @@ def _detect_color():
 
 _COLOR = _detect_color()
 
-# ANSI escape sequences — defined unconditionally to avoid NameError in both
-# branches of the `if _COLOR` class-body conditionals below.
-_R   = '\033[0m'        # reset
-_B   = '\033[1m'        # bold
-_D   = '\033[2m'        # dim
-_G   = '\033[1;32m'     # bold green
-_RD  = '\033[1;31m'     # bold red
-_C   = '\033[36m'       # cyan
-_BC  = '\033[1;36m'     # bold cyan
+# ANSI — defined unconditionally to avoid NameError in both branches.
+_R   = '\033[0m'       # reset
+_B   = '\033[1m'       # bold
+_D   = '\033[2m'       # dim
+_G   = '\033[32m'      # green (not bold — darker, easier on the eye)
+_RD  = '\033[31m'      # red   (not bold)
+_C   = '\033[36m'      # cyan
+_BC  = '\033[1;36m'    # bold cyan
 
+# ---------------------------------------------------------------------------
 # Decoration widths
-_W  = 88   # step decoration width
-_PW = 88   # program-level reporter width (same; kept separate for subclass overrides)
-_AW = 48   # aspect reporter width
+# ---------------------------------------------------------------------------
+_CW  = 64   # csmake step width
+_CPW = 71   # csmake program-level width
+_AW  = 42   # aspect reporter width
+_SW  = 88   # csmakeci step width
+_PW  = 88   # csmakeci program-level width
 
+
+# ===========================================================================
+# csmake reporter family  — triangle / arrow motif, classic narrower widths
+# ===========================================================================
 
 class Reporter:
+    """Step-level reporter for csmake.
+
+    Pass uses ▶ (solid right-pointing triangle — forward = success).
+    Fail uses ◀ (solid left-pointing triangle  — backward = failure).
+    Colorblind-safe: direction alone distinguishes them.
+    """
 
     NESTNOTE = '+'
     OUTPUT_HEADER = "%s  %%s  %s\n" % ('-' * 15, '-' * 15)
 
     if _COLOR:
-        # ------------------------------------------------------------------
-        # Color + Unicode mode
-        #
-        # Pass uses ▓ (dark shade — dense/solid = good)
-        # Fail uses ░ (light shade — sparse/translucent = broken)
-        # Colorblind-safe: texture difference survives grayscale.
-        # ------------------------------------------------------------------
-
-        PASS_BANNER  = _G  + '▓' * 20 + _R
-        FAIL_BANNER  = _RD + '░' * 20 + _R
-        SKIP_BANNER  = _D  + '╌' * 20 + _R
+        PASS_BANNER  = _G  + '▶' * 20 + _R
+        FAIL_BANNER  = _RD + '◀' * 20 + _R
+        SKIP_BANNER  = _D  + '·' * 20 + _R
         UNEX_BANNER  =       ' ' * 20
 
-        # Flat horizontal rules — thin for step boundaries, dashed for
-        # internal separators, thick for phase markers.
-        OBJECT_HEADER    = '\n  ' + _D + '─' * _W + _R
-        OBJECT_FOOTER    = '  ' + _D + '─' * _W + _R + '\n\n\n'
-        STATUS_SEPARATOR = '  ' + _D + '╌' * _W + _R + '\n'
-        PHASE_BANNER     = '\n  ' + _BC + '━' * _W + _R + '\n'
+        OBJECT_HEADER    = '\n  ' + _D + '─' * _CW + _R
+        OBJECT_FOOTER    = '  ' + _D + '─' * _CW + _R + '\n\n\n'
+        STATUS_SEPARATOR = '  ' + _D + '╌' * _CW + _R + '\n'
+        # Phase banner: row of hollow right-pointing triangles (▷), inspired
+        # by the classic /\ /\ /\ pattern from older csmake output.
+        PHASE_BANNER     = '\n  ' + _C + '▷ ' * (_CW // 2) + _R + '\n'
 
-        # Announce line  ({0}=nesting, {1}=type, {2}=id, {3}=Begin|End)
         ANNOUNCE_FORMAT = (
             '  {0}▸ ' + _C + '{1}' + _R + '@' + _B + '{2}' + _R
             + '  ' + _D + '·' + _R + '  {3}\n'
@@ -100,20 +111,16 @@ class Reporter:
         ONEXIT_ANNOUNCE_FORMAT = (
             '  /   ' + _D + '{3}' + _R + ' - Exit Handler: {0}@{1}  {2}\n'
         )
-
         STATUS_FORMAT = ' {1}   {2}: {3}   {1}\n'
 
-        # Exit handler separators — dashed texture marks them as "aside"
-        ONEXIT_HEADER          = '\n  ' + _D + '╌' * _W + _R + '\n'
-        ONEXIT_FOOTER          = '  '  + _D + '╌' * _W + _R + '\n\n'
-        ONEXIT_BEGIN_SEPARATOR = '  '  + _D + '· ' * 33 + '·' + _R + '\n'
-        ONEXIT_END_SEPARATOR   = '  '  + _D + '· ' * 33 + '·' + _R + '\n'
+        ONEXIT_HEADER          = '\n  ' + _D + '╌' * _CW + _R + '\n'
+        ONEXIT_FOOTER          = '  '  + _D + '╌' * _CW + _R + '\n\n'
+        ONEXIT_BEGIN_SEPARATOR = '  '  + _D + '· ' * (_CW // 2) + _R + '\n'
+        ONEXIT_END_SEPARATOR   = '  '  + _D + '· ' * (_CW // 2) + _R + '\n'
 
-        # Aspect joinpoint separators
         ASPECT_JOINPOINT_HEADER = '\n' + _D + '    ╌╌ Begin Joinpoint: %s ' + _R + '\n'
         ASPECT_JOINPOINT_FOOTER = '\n' + _D + '    ╌╌ End Joinpoint: %s '   + _R + '\n'
 
-        # Failure stack-dump separators (red to draw attention)
         DUMP_STACKS_SEPARATOR = _RD + '═' * 77 + _R + '\n'
         DUMP_STACK_SEPARATOR = (
             '\n' + _RD + '─' * 77 + '\n'
@@ -123,43 +130,35 @@ class Reporter:
         )
         DUMP_STACK_LAST_OUTPUT_SEPARATOR = (
             '\n' + _RD + '─' * 77 + '\n'
-            + '── ─ ─ ─ ─ ─ ─ ─ ─ ── Output From Failure ── ─ ─ ─ ─ ─ ─ ─ ─ ──\n'
+            + '── ─ ─ ─ ─ ─ ── Output From Failure ── ─ ─ ─ ─ ─ ──\n'
             + '─' * 77 + _R + '\n'
         )
         DUMP_STACK_STACK_SEPARATOR = (
             '\n' + _RD + '─' * 77 + '\n'
-            + '── ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ Stack Trace ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ──\n'
+            + '── ─ ─ ─ ─ ─ ─ ─ Stack Trace ─ ─ ─ ─ ─ ─ ─ ──\n'
             + '─' * 77 + _R + '\n'
         )
 
     else:
-        # ------------------------------------------------------------------
-        # Plain ASCII mode  (pipe, dumb terminal, NO_COLOR, CSMAKE_STYLE=plain)
-        #
-        # Pass uses # (dense, visually heavy = success)
-        # Fail uses ~ (wavy, sparse = broken)
-        # Colorblind-safe: texture difference requires no color.
-        # ------------------------------------------------------------------
+        # Plain ASCII — > (forward) for pass, < (backward) for fail.
+        PASS_BANNER  = '> ' * 10
+        FAIL_BANNER  = '< ' * 10
+        SKIP_BANNER  = '. ' * 10
+        UNEX_BANNER  = ' ' * 20
 
-        PASS_BANNER  = '#' * 20
-        FAIL_BANNER  = ('~ ' * 10).rstrip()
-        SKIP_BANNER  = ('. ' * 10).rstrip()
-        UNEX_BANNER  = ' ' * 19
-
-        OBJECT_HEADER    = '\n  ' + '-' * _W
-        OBJECT_FOOTER    = '  ' + '-' * _W + '\n\n\n'
-        STATUS_SEPARATOR = '  ' + '- ' * 33 + '-\n'
-        PHASE_BANNER     = '\n  ' + '=' * _W + '\n'
+        OBJECT_HEADER    = '\n  ' + '-' * _CW
+        OBJECT_FOOTER    = '  ' + '-' * _CW + '\n\n\n'
+        STATUS_SEPARATOR = '  ' + '- ' * (_CW // 2) + '\n'
+        PHASE_BANNER     = '\n  ' + '> ' * (_CW // 2) + '\n'
 
         ANNOUNCE_FORMAT        = '  {0}> {1}@{2}  -  {3}\n'
         ONEXIT_ANNOUNCE_FORMAT = '  /   {3} - Exit Handler: {0}@{1}  {2}\n'
+        STATUS_FORMAT          = ' {1}   {2}: {3}   {1}\n'
 
-        STATUS_FORMAT = ' {1}   {2}: {3}   {1}\n'
-
-        ONEXIT_HEADER          = '\n  ' + '.' * _W + '\n'
-        ONEXIT_FOOTER          = '  '  + '.' * _W + '\n\n'
-        ONEXIT_BEGIN_SEPARATOR = '  '  + '. ' * 33 + '.\n'
-        ONEXIT_END_SEPARATOR   = '  '  + '. ' * 33 + '.\n'
+        ONEXIT_HEADER          = '\n  ' + '.' * _CW + '\n'
+        ONEXIT_FOOTER          = '  '  + '.' * _CW + '\n\n'
+        ONEXIT_BEGIN_SEPARATOR = '  '  + '. ' * (_CW // 2) + '\n'
+        ONEXIT_END_SEPARATOR   = '  '  + '. ' * (_CW // 2) + '\n'
 
         ASPECT_JOINPOINT_HEADER = '\n    -- Begin Joinpoint: %s\n'
         ASPECT_JOINPOINT_FOOTER = '\n    -- End Joinpoint: %s\n'
@@ -173,18 +172,18 @@ class Reporter:
         )
         DUMP_STACK_LAST_OUTPUT_SEPARATOR = (
             '\n' + '-' * 77 + '\n'
-            + '-- - - - - - - - - - --- Output From Failure --- - - - - - - - - - --\n'
+            + '-- - - - - - - - --- Output From Failure --- - - - - - - - --\n'
             + '-' * 77 + '\n'
         )
         DUMP_STACK_STACK_SEPARATOR = (
             '\n' + '_' * 77 + '\n'
             + '-' * 77 + '\n'
-            + '-- - - - - - - - - - - - --- Stack Trace --- - - - - - - - - - - - --\n'
+            + '-- - - - - - - - - - --- Stack Trace --- - - - - - - - - - --\n'
             + '-' * 77 + '\n'
         )
 
     # ------------------------------------------------------------------
-    # Methods — unchanged regardless of style
+    # Methods
     # ------------------------------------------------------------------
 
     def __init__(self, out=None):
@@ -335,44 +334,53 @@ class NonChattyReporter(Reporter):
 
 
 class ProgramReporter(Reporter):
-    # Long flat rules — csmakeci uses this reporter and benefits from the width.
-    if _COLOR:
-        OBJECT_HEADER    = '\n  ' + _BC + '━' * _PW + _R + '\n'
-        OBJECT_FOOTER    = '\n  ' + _BC + '━' * _PW + _R + '\n'
-        STATUS_SEPARATOR = '  ' + _D + '╌' * _PW + _R + '\n'
+    """Program-level reporter for csmake.
 
-        # ▓ (dark/dense) for pass — visually heavy, green, reads as "solid/complete"
-        # ░ (light/sparse) for fail — visually hollow, red, reads as "broken/empty"
-        # Texture alone (no color) distinguishes them: colorblind-safe.
+    Uses ▷ (hollow right triangle) for pass borders — forward = success.
+    Uses ◁ (hollow left triangle)  for fail borders — backward = failure.
+    Colorblind-safe: direction alone distinguishes them.
+    """
+    if _COLOR:
+        OBJECT_HEADER = (
+            '\n  ' + _BC
+            + '▷ ' * (_CPW // 2) + '▷'
+            + _R + '\n'
+        )
+        OBJECT_FOOTER = (
+            '\n  ' + _BC
+            + '▷ ' * (_CPW // 2) + '▷'
+            + _R + '\n'
+        )
+        # Content width inside the ▷/◁ borders:
+        #   '  ▷  Build Passed' = 17 chars  +  padding  +  '▷'  =  2 + _CPW
+        #   padding = 2 + _CPW - 17 - 1 = _CPW - 16
         PASS_BANNER = (
             _G
-            + '\n  ' + '▓' * _PW + '\n'
-            + '  ▓  Build Passed' + ' ' * (_PW - 17) + '▓\n'
-            + '  ' + '▓' * _PW + '\n'
+            + '\n  ' + '▷' * _CPW + '\n'
+            + '  ▷  Build Passed' + ' ' * (_CPW - 16) + '▷\n'
+            + '  ' + '▷' * _CPW + '\n'
             + _R
         )
         FAIL_BANNER = (
             _RD
-            + '\n  ' + '░' * _PW + '\n'
-            + '  ░  Build Failed' + ' ' * (_PW - 17) + '░\n'
-            + '  ' + '░' * _PW + '\n'
+            + '\n  ' + '◁' * _CPW + '\n'
+            + '  ◁  Build Failed' + ' ' * (_CPW - 16) + '◁\n'
+            + '  ' + '◁' * _CPW + '\n'
             + _R
         )
     else:
-        OBJECT_HEADER    = '\n  ' + '=' * _PW + '\n'
-        OBJECT_FOOTER    = '\n  ' + '=' * _PW + '\n'
-        STATUS_SEPARATOR = '  ' + '- ' * (_PW // 2) + '\n'
+        OBJECT_HEADER = '\n  ' + '> ' * (_CPW // 2) + '>\n'
+        OBJECT_FOOTER = '\n  ' + '> ' * (_CPW // 2) + '>\n'
 
-        # # (dense) for pass, ~ (sparse/wavy) for fail — distinguishable without color
         PASS_BANNER = (
-            '\n  ' + '#' * _PW + '\n'
-            + '  #  Build Passed' + ' ' * (_PW - 17) + '#\n'
-            + '  ' + '#' * _PW + '\n'
+            '\n  ' + '>' * _CPW + '\n'
+            + '  >  Build Passed' + ' ' * (_CPW - 16) + '>\n'
+            + '  ' + '>' * _CPW + '\n'
         )
         FAIL_BANNER = (
-            '\n  ' + '~' * _PW + '\n'
-            + '  ~  Build Failed' + ' ' * (_PW - 17) + '~\n'
-            + '  ' + '~' * _PW + '\n'
+            '\n  ' + '<' * _CPW + '\n'
+            + '  <  Build Failed' + ' ' * (_CPW - 16) + '<\n'
+            + '  ' + '<' * _CPW + '\n'
         )
 
     STATUS_FORMAT = '{1}\n     {2}: {3}\n'
@@ -402,13 +410,13 @@ class NonChattyProgramReporter(NonChattyReporter):
 
 class AspectReporter(Reporter):
     if _COLOR:
-        PASS_BANNER = _G  + '▓' * 14 + _R
-        FAIL_BANNER = _RD + '░' * 14 + _R
-        OBJECT_HEADER = (
+        PASS_BANNER      = _G  + '▶' * 14 + _R
+        FAIL_BANNER      = _RD + '◀' * 14 + _R
+        OBJECT_HEADER    = (
             '       ' + _D + '─' * _AW + _R + '\n'
             + '       ' + _D + '▸  ' + _R + _B + 'Aspect' + _R + '\n'
         )
-        OBJECT_FOOTER = (
+        OBJECT_FOOTER    = (
             '       ' + _D + '▸  End Aspect' + _R + '\n'
             + '       ' + _D + '─' * _AW + _R + '\n'
         )
@@ -418,17 +426,188 @@ class AspectReporter(Reporter):
             + '  ' + _D + '·' + _R + '  {3}\n'
         )
     else:
-        PASS_BANNER = '#' * 14
-        FAIL_BANNER = ('~ ' * 7).rstrip()
-        OBJECT_HEADER = (
+        PASS_BANNER      = '> ' * 7
+        FAIL_BANNER      = '< ' * 7
+        OBJECT_HEADER    = (
             '       ' + '-' * _AW + '\n'
             '       >  Aspect\n'
         )
-        OBJECT_FOOTER = (
+        OBJECT_FOOTER    = (
             '       >  End Aspect\n'
             '       ' + '-' * _AW + '\n'
         )
-        STATUS_SEPARATOR = '       ' + '- ' * 24 + '\n'
+        STATUS_SEPARATOR = '       ' + '- ' * (_AW // 2) + '\n'
         ANNOUNCE_FORMAT  = '        &{1}@{2}  -  {3}\n'
 
     STATUS_FORMAT = '{0}   {1} {2}: {3} {1}\n'
+
+
+# ===========================================================================
+# csmakeci reporter family  — filled/translucent block motif, wider widths
+# ===========================================================================
+
+class CsmakeCIReporter(Reporter):
+    """Step-level reporter for csmakeci.
+
+    Pass uses ▓ (dark shade — dense/solid = complete).
+    Fail uses ░ (light shade — sparse/translucent = broken).
+    Colorblind-safe: texture alone distinguishes them.
+    """
+    if _COLOR:
+        PASS_BANNER  = _G  + '▓' * 20 + _R
+        FAIL_BANNER  = _RD + '░' * 20 + _R
+        SKIP_BANNER  = _D  + '╌' * 20 + _R
+        UNEX_BANNER  =       ' ' * 20
+
+        OBJECT_HEADER    = '\n  ' + _D + '─' * _SW + _R
+        OBJECT_FOOTER    = '  ' + _D + '─' * _SW + _R + '\n\n\n'
+        STATUS_SEPARATOR = '  ' + _D + '╌' * _SW + _R + '\n'
+        PHASE_BANNER     = '\n  ' + _BC + '━' * _SW + _R + '\n'
+
+        ANNOUNCE_FORMAT = (
+            '  {0}▸ ' + _C + '{1}' + _R + '@' + _B + '{2}' + _R
+            + '  ' + _D + '·' + _R + '  {3}\n'
+        )
+        ONEXIT_ANNOUNCE_FORMAT = (
+            '  /   ' + _D + '{3}' + _R + ' - Exit Handler: {0}@{1}  {2}\n'
+        )
+        STATUS_FORMAT = ' {1}   {2}: {3}   {1}\n'
+
+        ONEXIT_HEADER          = '\n  ' + _D + '╌' * _SW + _R + '\n'
+        ONEXIT_FOOTER          = '  '  + _D + '╌' * _SW + _R + '\n\n'
+        ONEXIT_BEGIN_SEPARATOR = '  '  + _D + '· ' * (_SW // 2) + _R + '\n'
+        ONEXIT_END_SEPARATOR   = '  '  + _D + '· ' * (_SW // 2) + _R + '\n'
+
+        ASPECT_JOINPOINT_HEADER = '\n' + _D + '    ╌╌ Begin Joinpoint: %s ' + _R + '\n'
+        ASPECT_JOINPOINT_FOOTER = '\n' + _D + '    ╌╌ End Joinpoint: %s '   + _R + '\n'
+
+        DUMP_STACKS_SEPARATOR = _RD + '═' * 77 + _R + '\n'
+        DUMP_STACK_SEPARATOR = (
+            '\n' + _RD + '─' * 77 + '\n'
+            + '═' * 77 + '\n'
+            + '=== End of failure output and stacks\n'
+            + '═' * 77 + _R + '\n'
+        )
+        DUMP_STACK_LAST_OUTPUT_SEPARATOR = (
+            '\n' + _RD + '─' * 77 + '\n'
+            + '── ─ ─ ─ ─ ─ ── Output From Failure ── ─ ─ ─ ─ ─ ──\n'
+            + '─' * 77 + _R + '\n'
+        )
+        DUMP_STACK_STACK_SEPARATOR = (
+            '\n' + _RD + '─' * 77 + '\n'
+            + '── ─ ─ ─ ─ ─ ─ ─ Stack Trace ─ ─ ─ ─ ─ ─ ─ ──\n'
+            + '─' * 77 + _R + '\n'
+        )
+
+    else:
+        PASS_BANNER  = '#' * 20
+        FAIL_BANNER  = ('~ ' * 10).rstrip()
+        SKIP_BANNER  = ('. ' * 10).rstrip()
+        UNEX_BANNER  = ' ' * 19
+
+        OBJECT_HEADER    = '\n  ' + '-' * _SW
+        OBJECT_FOOTER    = '  ' + '-' * _SW + '\n\n\n'
+        STATUS_SEPARATOR = '  ' + '- ' * (_SW // 2) + '\n'
+        PHASE_BANNER     = '\n  ' + '=' * _SW + '\n'
+
+        ANNOUNCE_FORMAT        = '  {0}> {1}@{2}  -  {3}\n'
+        ONEXIT_ANNOUNCE_FORMAT = '  /   {3} - Exit Handler: {0}@{1}  {2}\n'
+        STATUS_FORMAT          = ' {1}   {2}: {3}   {1}\n'
+
+        ONEXIT_HEADER          = '\n  ' + '.' * _SW + '\n'
+        ONEXIT_FOOTER          = '  '  + '.' * _SW + '\n\n'
+        ONEXIT_BEGIN_SEPARATOR = '  '  + '. ' * (_SW // 2) + '\n'
+        ONEXIT_END_SEPARATOR   = '  '  + '. ' * (_SW // 2) + '\n'
+
+        ASPECT_JOINPOINT_HEADER = '\n    -- Begin Joinpoint: %s\n'
+        ASPECT_JOINPOINT_FOOTER = '\n    -- End Joinpoint: %s\n'
+
+        DUMP_STACKS_SEPARATOR = '=' * 77 + '\n'
+        DUMP_STACK_SEPARATOR = (
+            '\n' + '_' * 77 + '\n'
+            + '=' * 77 + '\n'
+            + '=== End of failure output and stacks\n'
+            + '=' * 77 + '\n'
+        )
+        DUMP_STACK_LAST_OUTPUT_SEPARATOR = (
+            '\n' + '-' * 77 + '\n'
+            + '-- - - - - - --- Output From Failure --- - - - - - --\n'
+            + '-' * 77 + '\n'
+        )
+        DUMP_STACK_STACK_SEPARATOR = (
+            '\n' + '_' * 77 + '\n'
+            + '-' * 77 + '\n'
+            + '-- - - - - - - - --- Stack Trace --- - - - - - - - --\n'
+            + '-' * 77 + '\n'
+        )
+
+
+class CsmakeCINonChattyReporter(NonChattyReporter, CsmakeCIReporter):
+    """Non-chatty variant: CI constants, NonChatty method overrides.
+
+    MRO: CsmakeCINonChattyReporter → NonChattyReporter → CsmakeCIReporter → Reporter
+    Constants resolve from CsmakeCIReporter; methods resolve from NonChattyReporter.
+    """
+    pass
+
+
+class CsmakeCIProgramReporter(ProgramReporter):
+    """Program-level reporter for csmakeci — wide, block-shade borders."""
+
+    if _COLOR:
+        OBJECT_HEADER    = '\n  ' + _BC + '━' * _PW + _R + '\n'
+        OBJECT_FOOTER    = '\n  ' + _BC + '━' * _PW + _R + '\n'
+        STATUS_SEPARATOR = '  ' + _D + '╌' * _PW + _R + '\n'
+
+        # Content width: '  ▓  Build Passed' = 17 chars + padding + '▓' = 2+_PW
+        #   padding = 2 + _PW - 17 - 1 = _PW - 16
+        PASS_BANNER = (
+            _G
+            + '\n  ' + '▓' * _PW + '\n'
+            + '  ▓  Build Passed' + ' ' * (_PW - 16) + '▓\n'
+            + '  ' + '▓' * _PW + '\n'
+            + _R
+        )
+        FAIL_BANNER = (
+            _RD
+            + '\n  ' + '░' * _PW + '\n'
+            + '  ░  Build Failed' + ' ' * (_PW - 16) + '░\n'
+            + '  ' + '░' * _PW + '\n'
+            + _R
+        )
+    else:
+        OBJECT_HEADER    = '\n  ' + '=' * _PW + '\n'
+        OBJECT_FOOTER    = '\n  ' + '=' * _PW + '\n'
+        STATUS_SEPARATOR = '  ' + '- ' * (_PW // 2) + '\n'
+
+        PASS_BANNER = (
+            '\n  ' + '#' * _PW + '\n'
+            + '  #  Build Passed' + ' ' * (_PW - 16) + '#\n'
+            + '  ' + '#' * _PW + '\n'
+        )
+        FAIL_BANNER = (
+            '\n  ' + '~' * _PW + '\n'
+            + '  ~  Build Failed' + ' ' * (_PW - 16) + '~\n'
+            + '  ' + '~' * _PW + '\n'
+        )
+
+    STATUS_FORMAT = '{1}\n     {2}: {3}\n'
+
+    def __init__(self, version, appname='csmakeci', out=None):
+        Reporter.__init__(self, out)
+        if _COLOR:
+            self.ANNOUNCE_FORMAT = (
+                '\n     ' + _B + '{3}' + _R + ' %s' % appname
+                + _D + ' - version %s' % version + _R + '\n'
+            )
+        else:
+            self.ANNOUNCE_FORMAT = '\n     {3} %s - version %s\n' % (appname, version)
+
+
+class CsmakeCINonChattyProgramReporter(NonChattyProgramReporter):
+    """Non-chatty CI program reporter — CI-wide STATUS_SEPARATOR."""
+
+    if _COLOR:
+        STATUS_SEPARATOR = '  ' + _D + '╌' * _PW + _R + '\n'
+    else:
+        STATUS_SEPARATOR = '  ' + '- ' * (_PW // 2) + '\n'

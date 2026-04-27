@@ -17,16 +17,20 @@
 # </copyright>
 from .Result import Result
 from .phases import phases
-from .Reporter import ProgramReporter, NonChattyProgramReporter
+from .Reporter import ProgramReporter, NonChattyProgramReporter, \
+    CsmakeCIProgramReporter, CsmakeCINonChattyProgramReporter
 
 class ProgramResult(Result):
 
     def __init__(self, env, version, appname='csmake', resultInfo={}):
         Result.__init__(self, env, resultInfo)
+        prog_cls = getattr(env, '_program_reporter_class', ProgramReporter)
+        nonchatty_prog_cls = getattr(
+            env, '_nonchatty_program_reporter_class', NonChattyProgramReporter)
         if self.chatter:
-            self.reporter = ProgramReporter(version, appname, self.params['Out'])
+            self.reporter = prog_cls(version, appname, self.params['Out'])
         else:
-            self.reporter = NonChattyProgramReporter(version, appname, self.params['Out'])
+            self.reporter = nonchatty_prog_cls(version, appname, self.params['Out'])
 
     def setupTee(self):
         pass
