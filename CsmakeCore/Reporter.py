@@ -50,18 +50,20 @@ def _detect_color():
 
 _COLOR = _detect_color()
 
-# ANSI escape sequences — only meaningful when _COLOR is True, but defined
-# unconditionally so the class bodies below can reference them in both branches
-# of the `if _COLOR` conditionals without NameError.
+# ANSI escape sequences — defined unconditionally to avoid NameError in both
+# branches of the `if _COLOR` class-body conditionals below.
 _R   = '\033[0m'        # reset
 _B   = '\033[1m'        # bold
 _D   = '\033[2m'        # dim
 _G   = '\033[1;32m'     # bold green
 _RD  = '\033[1;31m'     # bold red
-_Y   = '\033[33m'       # yellow
 _C   = '\033[36m'       # cyan
 _BC  = '\033[1;36m'     # bold cyan
-_BR  = '\033[1;31m'     # bold red (alias)
+
+# Decoration widths
+_W  = 67   # standard step width
+_PW = 88   # program-level reporter width (long bars for csmakeci)
+_AW = 48   # aspect reporter width
 
 
 class Reporter:
@@ -71,25 +73,29 @@ class Reporter:
 
     if _COLOR:
         # ------------------------------------------------------------------
-        # Color + Unicode mode  (modern terminal)
+        # Color + Unicode mode
+        #
+        # Pass uses ▓ (dark shade — dense/solid = good)
+        # Fail uses ░ (light shade — sparse/translucent = broken)
+        # Colorblind-safe: texture difference survives grayscale.
         # ------------------------------------------------------------------
-        PASS_BANNER  = _G  + ' ✔  ✔  ✔  ✔  ✔  ✔  ✔  ✔  ✔  ✔  ✔ ' + _R
-        FAIL_BANNER  = _RD + ' ✘  ✘  ✘  ✘  ✘  ✘  ✘  ✘  ✘  ✘  ✘ ' + _R
-        SKIP_BANNER  = _D  + ' ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  · ' + _R
-        UNEX_BANNER  =       '                                     '
 
-        # Step block borders
-        OBJECT_HEADER      = '\n' + _D + '  ╭' + '─' * 64 + '╮' + _R
-        OBJECT_FOOTER      = _D + '  ╰' + '─' * 64 + '╯' + _R + '\n\n\n'
-        STATUS_SEPARATOR   = _D + '  ├' + '─' * 64 + '┤' + _R + '\n'
+        PASS_BANNER  = _G  + '▓' * 20 + _R
+        FAIL_BANNER  = _RD + '░' * 20 + _R
+        SKIP_BANNER  = _D  + '╌' * 20 + _R
+        UNEX_BANNER  =       ' ' * 20
 
-        # Phase banner (printed before "BEGINNING PHASE: ...")
-        PHASE_BANNER = '\n' + _BC + '  ╒' + '═' * 64 + '╕' + _R + '\n'
+        # Flat horizontal rules — thin for step boundaries, dashed for
+        # internal separators, thick for phase markers.
+        OBJECT_HEADER    = '\n  ' + _D + '─' * _W + _R
+        OBJECT_FOOTER    = '  ' + _D + '─' * _W + _R + '\n\n\n'
+        STATUS_SEPARATOR = '  ' + _D + '╌' * _W + _R + '\n'
+        PHASE_BANNER     = '\n  ' + _BC + '━' * _W + _R + '\n'
 
         # Announce line  ({0}=nesting, {1}=type, {2}=id, {3}=Begin|End)
         ANNOUNCE_FORMAT = (
-            '  {0}' + _C + '{1}' + _R + '@' + _B + '{2}' + _R
-            + '      ' + _D + '···' + _R + '  {3}\n'
+            '  {0}▸ ' + _C + '{1}' + _R + '@' + _B + '{2}' + _R
+            + '  ' + _D + '·' + _R + '  {3}\n'
         )
         ONEXIT_ANNOUNCE_FORMAT = (
             '  /   ' + _D + '{3}' + _R + ' - Exit Handler: {0}@{1}  {2}\n'
@@ -97,67 +103,66 @@ class Reporter:
 
         STATUS_FORMAT = ' {1}   {2}: {3}   {1}\n'
 
-        # Exit handler separators
-        ONEXIT_HEADER          = '\n' + _D + '   ' + '· ' * 34 + _R + '\n'
-        ONEXIT_FOOTER          = _D + ' ' + '‘ ' * 36 + _R + '\n\n'
-        ONEXIT_BEGIN_SEPARATOR = _D + ' ' + '· ' * 36 + _R + '\n'
-        ONEXIT_END_SEPARATOR   = _D + '   ' + '· ' * 35 + _R + '\n'
+        # Exit handler separators — dashed texture marks them as "aside"
+        ONEXIT_HEADER          = '\n  ' + _D + '╌' * _W + _R + '\n'
+        ONEXIT_FOOTER          = '  '  + _D + '╌' * _W + _R + '\n\n'
+        ONEXIT_BEGIN_SEPARATOR = '  '  + _D + '· ' * 33 + '·' + _R + '\n'
+        ONEXIT_END_SEPARATOR   = '  '  + _D + '· ' * 33 + '·' + _R + '\n'
 
         # Aspect joinpoint separators
-        ASPECT_JOINPOINT_HEADER = (
-            '\n' + _D + '    ╰─ Begin Joinpoint: %s ' + _R + '\n'
-        )
-        ASPECT_JOINPOINT_FOOTER = (
-            '\n' + _D + '    ╭─ End Joinpoint: %s ' + _R + '\n'
-        )
+        ASPECT_JOINPOINT_HEADER = '\n' + _D + '    ╌╌ Begin Joinpoint: %s ' + _R + '\n'
+        ASPECT_JOINPOINT_FOOTER = '\n' + _D + '    ╌╌ End Joinpoint: %s '   + _R + '\n'
 
-        # Failure stack-dump separators  (red to draw attention)
-        DUMP_STACKS_SEPARATOR = _RD + '=' * 77 + _R + '\n'
+        # Failure stack-dump separators (red to draw attention)
+        DUMP_STACKS_SEPARATOR = _RD + '═' * 77 + _R + '\n'
         DUMP_STACK_SEPARATOR = (
-            '\n' + _RD + '_' * 77 + '\n'
-            + '=' * 77 + '\n'
+            '\n' + _RD + '─' * 77 + '\n'
+            + '═' * 77 + '\n'
             + '=== End of failure output and stacks\n'
-            + '=' * 77 + _R + '\n'
+            + '═' * 77 + _R + '\n'
         )
         DUMP_STACK_LAST_OUTPUT_SEPARATOR = (
-            '\n' + _RD + '-' * 77 + '\n'
-            + '-- - - - - - - - - - --- Output From Failure --- - - - - - - - - - --\n'
-            + '-' * 77 + _R + '\n'
+            '\n' + _RD + '─' * 77 + '\n'
+            + '── ─ ─ ─ ─ ─ ─ ─ ─ ── Output From Failure ── ─ ─ ─ ─ ─ ─ ─ ─ ──\n'
+            + '─' * 77 + _R + '\n'
         )
         DUMP_STACK_STACK_SEPARATOR = (
-            '\n' + _RD + '_' * 77 + '\n'
-            + '-' * 77 + '\n'
-            + '-- - - - - - - - - - - - --- Stack Trace --- - - - - - - - - - - - --\n'
-            + '-' * 77 + _R + '\n'
+            '\n' + _RD + '─' * 77 + '\n'
+            + '── ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ Stack Trace ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ──\n'
+            + '─' * 77 + _R + '\n'
         )
 
     else:
         # ------------------------------------------------------------------
-        # Plain ASCII mode  (pipe, dumb terminal, NO_COLOR)
+        # Plain ASCII mode  (pipe, dumb terminal, NO_COLOR, CSMAKE_STYLE=plain)
+        #
+        # Pass uses # (dense, visually heavy = success)
+        # Fail uses ~ (wavy, sparse = broken)
+        # Colorblind-safe: texture difference requires no color.
         # ------------------------------------------------------------------
-        PASS_BANNER  = '> > > > > > > > > > > > > > > > > > > > > >'
-        FAIL_BANNER  = 'X X X X X X X X X X X X X X X X X X X X X X'
-        SKIP_BANNER  = '. . . . . . . . . . . . . . . . . . . . . .'
-        UNEX_BANNER  = '                                            '
 
-        OBJECT_HEADER      = '\n  +' + '-' * 64 + '+'
-        OBJECT_FOOTER      = '  +' + '-' * 64 + '+\n\n\n'
-        STATUS_SEPARATOR   = '  ' + '-' * 66 + '\n'
+        PASS_BANNER  = '#' * 20
+        FAIL_BANNER  = ('~ ' * 10).rstrip()
+        SKIP_BANNER  = ('. ' * 10).rstrip()
+        UNEX_BANNER  = ' ' * 19
 
-        PHASE_BANNER = '\n  ' + '=' * 66 + '\n'
+        OBJECT_HEADER    = '\n  ' + '-' * _W
+        OBJECT_FOOTER    = '  ' + '-' * _W + '\n\n\n'
+        STATUS_SEPARATOR = '  ' + '- ' * 33 + '-\n'
+        PHASE_BANNER     = '\n  ' + '=' * _W + '\n'
 
-        ANNOUNCE_FORMAT        = '  {0}{1}@{2}      ---  {3}\n'
+        ANNOUNCE_FORMAT        = '  {0}> {1}@{2}  -  {3}\n'
         ONEXIT_ANNOUNCE_FORMAT = '  /   {3} - Exit Handler: {0}@{1}  {2}\n'
 
         STATUS_FORMAT = ' {1}   {2}: {3}   {1}\n'
 
-        ONEXIT_HEADER          = '\n   ' + '.' * 70 + '\n'
-        ONEXIT_FOOTER          = ' ' + '`' * 72 + '\n\n'
-        ONEXIT_BEGIN_SEPARATOR = ' ' + '`' * 72 + '\n'
-        ONEXIT_END_SEPARATOR   = '   ' + '.' * 70 + '\n'
+        ONEXIT_HEADER          = '\n  ' + '.' * _W + '\n'
+        ONEXIT_FOOTER          = '  '  + '.' * _W + '\n\n'
+        ONEXIT_BEGIN_SEPARATOR = '  '  + '. ' * 33 + '.\n'
+        ONEXIT_END_SEPARATOR   = '  '  + '. ' * 33 + '.\n'
 
-        ASPECT_JOINPOINT_HEADER = '\n    +-- Begin Joinpoint: %s\n'
-        ASPECT_JOINPOINT_FOOTER = '\n    +-- End Joinpoint: %s\n'
+        ASPECT_JOINPOINT_HEADER = '\n    -- Begin Joinpoint: %s\n'
+        ASPECT_JOINPOINT_FOOTER = '\n    -- End Joinpoint: %s\n'
 
         DUMP_STACKS_SEPARATOR = '=' * 77 + '\n'
         DUMP_STACK_SEPARATOR = (
@@ -330,56 +335,42 @@ class NonChattyReporter(Reporter):
 
 
 class ProgramReporter(Reporter):
+    # Long flat rules — csmakeci uses this reporter and benefits from the width.
     if _COLOR:
-        OBJECT_HEADER = (
-            '\n' + _BC
-            + '  ╔' + '═' * 71 + '╗\n'
-            + '  ║' + ' ' * 71 + '║\n'
-            + '  ╚' + '═' * 71 + '╝'
-            + _R + '\n'
-        )
-        OBJECT_FOOTER = OBJECT_HEADER
+        OBJECT_HEADER = '\n  ' + _BC + '━' * _PW + _R + '\n'
+        OBJECT_FOOTER = '\n  ' + _BC + '━' * _PW + _R + '\n'
 
+        # ▓ (dark/dense) for pass — visually heavy, green, reads as "solid/complete"
+        # ░ (light/sparse) for fail — visually hollow, red, reads as "broken/empty"
+        # Texture alone (no color) distinguishes them: colorblind-safe.
         PASS_BANNER = (
             _G
-            + '\n  ┌' + '─' * 71 + '┐\n'
-            + '  │' + ' ' * 71 + '│\n'
-            + '  │  ✔  Build Passed' + ' ' * 57 + '│\n'
-            + '  │' + ' ' * 71 + '│\n'
-            + '  └' + '─' * 71 + '┘\n'
+            + '\n  ' + '▓' * _PW + '\n'
+            + '  ▓  Build Passed' + ' ' * (_PW - 17) + '▓\n'
+            + '  ' + '▓' * _PW + '\n'
             + _R
         )
         FAIL_BANNER = (
             _RD
-            + '\n  ┌' + '─' * 71 + '┐\n'
-            + '  │' + ' ' * 71 + '│\n'
-            + '  │  ✘  Build Failed' + ' ' * 57 + '│\n'
-            + '  │' + ' ' * 71 + '│\n'
-            + '  └' + '─' * 71 + '┘\n'
+            + '\n  ' + '░' * _PW + '\n'
+            + '  ░  Build Failed' + ' ' * (_PW - 17) + '░\n'
+            + '  ' + '░' * _PW + '\n'
             + _R
         )
     else:
-        OBJECT_HEADER = (
-            '\n'
-            '  +' + '=' * 71 + '+\n'
-            '  |' + ' ' * 71 + '|\n'
-            '  +' + '=' * 71 + '+\n'
-        )
-        OBJECT_FOOTER = OBJECT_HEADER
+        OBJECT_HEADER = '\n  ' + '=' * _PW + '\n'
+        OBJECT_FOOTER = '\n  ' + '=' * _PW + '\n'
 
+        # # (dense) for pass, ~ (sparse/wavy) for fail — distinguishable without color
         PASS_BANNER = (
-            '\n  +' + '-' * 71 + '+\n'
-            '  |' + ' ' * 71 + '|\n'
-            '  |  >>  Build Passed' + ' ' * 50 + '|\n'
-            '  |' + ' ' * 71 + '|\n'
-            '  +' + '-' * 71 + '+\n'
+            '\n  ' + '#' * _PW + '\n'
+            + '  #  Build Passed' + ' ' * (_PW - 17) + '#\n'
+            + '  ' + '#' * _PW + '\n'
         )
         FAIL_BANNER = (
-            '\n  +' + '-' * 71 + '+\n'
-            '  |' + ' ' * 71 + '|\n'
-            '  |  XX  Build Failed' + ' ' * 50 + '|\n'
-            '  |' + ' ' * 71 + '|\n'
-            '  +' + '-' * 71 + '+\n'
+            '\n  ' + '~' * _PW + '\n'
+            + '  ~  Build Failed' + ' ' * (_PW - 17) + '~\n'
+            + '  ' + '~' * _PW + '\n'
         )
 
     STATUS_FORMAT = '{1}\n     {2}: {3}\n'
@@ -409,36 +400,33 @@ class NonChattyProgramReporter(NonChattyReporter):
 
 class AspectReporter(Reporter):
     if _COLOR:
-        PASS_BANNER = _G  + '  ✔  ✔  ✔  ✔  ✔  ✔  ' + _R
-        FAIL_BANNER = _RD + '  ✘  ✘  ✘  ✘  ✘  ✘  ' + _R
+        PASS_BANNER = _G  + '▓' * 14 + _R
+        FAIL_BANNER = _RD + '░' * 14 + _R
         OBJECT_HEADER = (
-            _D
-            + '       ┌' + '─' * 40 + '┐\n'
-            + '       │  ' + _R + _B + 'Aspect' + _R + _D + '  ' + '·' * 32 + '│\n'
-            + '       └' + '─' * 40 + '┘' + _R
+            '       ' + _D + '─' * _AW + _R + '\n'
+            + '       ' + _D + '▸  ' + _R + _B + 'Aspect' + _R + '\n'
         )
         OBJECT_FOOTER = (
-            _D
-            + '       ┌' + '─' * 40 + '┐\n'
-            + '       │  ' + _R + _D + 'End Aspect' + '  ' + '·' * 28 + '│\n'
-            + '       └' + '─' * 40 + '┘' + _R + '\n'
+            '       ' + _D + '▸  End Aspect' + _R + '\n'
+            + '       ' + _D + '─' * _AW + _R + '\n'
         )
-        STATUS_SEPARATOR = _D + '        ' + '─' * 42 + _R + '\n'
-        ANNOUNCE_FORMAT  = '        &' + _C + '{1}' + _R + '@' + _B + '{2}' + _R + '         ' + _D + '...' + _R + '  {3}\n'
+        STATUS_SEPARATOR = '       ' + _D + '╌' * _AW + _R + '\n'
+        ANNOUNCE_FORMAT  = (
+            '        &' + _C + '{1}' + _R + '@' + _B + '{2}' + _R
+            + '  ' + _D + '·' + _R + '  {3}\n'
+        )
     else:
-        PASS_BANNER = '      ~~~~~~      '
-        FAIL_BANNER = '      ######      '
+        PASS_BANNER = '#' * 14
+        FAIL_BANNER = ('~ ' * 7).rstrip()
         OBJECT_HEADER = (
-            '       +' + '-' * 40 + '+\n'
-            '       |  Aspect' + ' ' * 33 + '|\n'
-            '       +' + '-' * 40 + '+'
+            '       ' + '-' * _AW + '\n'
+            '       >  Aspect\n'
         )
         OBJECT_FOOTER = (
-            '       +' + '-' * 40 + '+\n'
-            '       |  End Aspect' + ' ' * 29 + '|\n'
-            '       +' + '-' * 40 + '+\n'
+            '       >  End Aspect\n'
+            '       ' + '-' * _AW + '\n'
         )
-        STATUS_SEPARATOR = '        ' + '-' * 42 + '\n'
-        ANNOUNCE_FORMAT  = '        &{1}@{2}         ...  {3}\n'
+        STATUS_SEPARATOR = '       ' + '- ' * 24 + '\n'
+        ANNOUNCE_FORMAT  = '        &{1}@{2}  -  {3}\n'
 
     STATUS_FORMAT = '{0}   {1} {2}: {3} {1}\n'
