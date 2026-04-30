@@ -68,10 +68,12 @@ class Result:
             self.params['Type'] = '<<Type Unset>>'
         if 'Id' not in self.params:
             self.params['Id'] = '<<Step Id Unset>>'
+        reporter_cls = getattr(env, '_reporter_class', Reporter)
+        nonchatty_cls = getattr(env, '_nonchatty_reporter_class', NonChattyReporter)
         if self.chatter:
-            self.reporter = Reporter(self.params['Out'])
+            self.reporter = reporter_cls(self.params['Out'])
         else:
-            self.reporter = NonChattyReporter(self.params['Out'])
+            self.reporter = nonchatty_cls(self.params['Out'])
         OutputTee.OutputTee.startResult(self)
 
     def setTargetModule(self, targetModule):

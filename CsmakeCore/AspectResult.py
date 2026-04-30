@@ -15,7 +15,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # </copyright>
 from .Result import Result
-from .Reporter import AspectReporter, NonChattyReporter
+from .Reporter import AspectReporter, NonChattyReporter, CsmakeCIReporter
 
 class AspectResult(Result):
 
@@ -27,10 +27,12 @@ class AspectResult(Result):
             self.params['AspectId'] = '<<No Aspect Id>>'
         self.nesting=1
         self.resultType='Aspect'
+        aspect_cls = getattr(env, '_aspect_reporter_class', AspectReporter)
+        nonchatty_cls = getattr(env, '_nonchatty_reporter_class', NonChattyReporter)
         if self.chatter:
-            self.reporter = AspectReporter(self.params['Out'])
+            self.reporter = aspect_cls(self.params['Out'])
         else:
-            self.reporter = NonChattyReporter(self.params['Out'])
+            self.reporter = nonchatty_cls(self.params['Out'])
 
     #TODO: Join points with multiple advisements are getting success/fail/skip
     #      Status overwritten.

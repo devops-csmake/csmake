@@ -541,8 +541,19 @@ class CliDriver(object):
         else:
             self.logfile = sys.stdout
         OutputTee.subsumeStream(self.logfile)
+        try:
+            capture_fd = self.settings['capture-fd']
+        except KeyError:
+            capture_fd = None
+        if capture_fd is not None:
+            try:
+                capture_stream = os.fdopen(int(capture_fd), 'w', closefd=True)
+                OutputTee.addCaptureStream(capture_stream)
+            except Exception as e:
+                self.log.critical("--capture-fd '%s' could not be opened: %s", capture_fd, str(e))
+                sys.exit(2)
         self.logfile = OutputTee
-        self.log = ProgramResult(self.environment, self.scriptVersion, {'Out' : self.logfile })
+        self.log = ProgramResult(self.environment, self.scriptVersion, self.scriptName, {'Out' : self.logfile })
         self.log.setTargetModule(self)
 
     def _getOptions(self):
