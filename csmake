@@ -183,6 +183,12 @@ CSMAKE_SETTINGS={
         None,
         """Sends all logging to specified file, None == stdout""",
         False],
+    "capture-fd": [
+        None,
+        """File descriptor number to duplicate all output to, in addition to
+           stdout.  Intended for use by csmakeci to capture build output
+           while still streaming to the tty.""",
+        False],
     "settings": [
         None,
         """(experimental) JSON specification of settings to avoid using manifold flags""",

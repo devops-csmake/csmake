@@ -31,6 +31,7 @@ class OutputTee:
         self.lock = threading.Lock()
         self.resultIds = {}
         self.writers = []
+        self.captureStreams = []
         self.threadsOpen = {}
         self.threads = []
         self._locals = threading.local()
@@ -38,6 +39,34 @@ class OutputTee:
 
     def subsumeStream(self, stream):
         self.actual = stream
+
+    def addCaptureStream(self, stream):
+        with self.lock:
+            self.captureStreams.append(stream)
+
+    def removeCaptureStream(self, stream):
+        with self.lock:
+            try:
+                self.captureStreams.remove(stream)
+            except ValueError:
+                pass
+
+    def _writeToAll(self, buf):
+        try:
+            self.actual.write(buf)
+            self.actual.flush()
+        except Exception as e:
+            sys.stderr.write("Couldn't write actual: " + buf + "\n")
+            sys.stderr.write(str(e))
+            sys.stderr.flush()
+        with self.lock:
+            captures = list(self.captureStreams)
+        for cap in captures:
+            try:
+                cap.write(buf)
+                cap.flush()
+            except Exception:
+                pass
 
     def _consumerThread(self, myfilename):
         buf = ""
@@ -48,22 +77,11 @@ class OutputTee:
                 if len(buf) == 0:
                     time.sleep(.1)
                     continue
-                try:
-                    self.actual.write(buf)
-                    self.actual.flush()
-                except Exception as e:
-                    sys.stderr.write("Couldn't write actual: " + buf + "\n")
-                    sys.stderr.write(str(e))
-                    sys.stderr.write(str(self.actual))
-                    sys.stderr.flush()
+                self._writeToAll(buf)
             else:
                 buf = myfd.read(2048)
                 while len(buf):
-                    try:
-                        self.actual.write(buf)
-                    except:
-                        sys.stderr.write("Couldn't write actual: " + buf + "\n")
-                        sys.stderr.flush()
+                    self._writeToAll(buf)
                     buf = myfd.read(2048)
 
     def _init_thread_local(self):
