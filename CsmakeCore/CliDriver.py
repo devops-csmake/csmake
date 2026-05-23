@@ -97,6 +97,7 @@ class CliDriver(object):
         self.scriptName = name
         self.scriptVersion = version
         self.modulePathConstruct = None
+        self._remoteModulesAttempted = set()
         #This will be replaced with a "Results" type object
         logging.basicConfig()
         self.log = logging.getLogger("%s.%s" % (
@@ -988,8 +989,14 @@ class CliDriver(object):
         else:
             self.buildspecLock.acquire()
             try:
-                self.buildspec.read([spec])
-                self.outBuildspec.read([spec])
+                if spec.endswith('.yml') or spec.endswith('.yaml'):
+                    from .GHActionsFileReader import read_gha_workflow
+                    sections = read_gha_workflow(spec)
+                    self.buildspec.read_dict(sections)
+                    self.outBuildspec.read_dict(sections)
+                else:
+                    self.buildspec.read([spec])
+                    self.outBuildspec.read([spec])
             finally:
                 self.buildspecLock.release()
             return True
@@ -1502,6 +1509,20 @@ class CliDriver(object):
                 if found and stopOnFoundOrFail:
                     self.log.devdebug("Module '%s' was found", target)
                     return (modules, warnings)
+
+        # Nothing found locally — try auto-downloading from devops-csmake
+        if len(modules) == 0 and target and target not in self._remoteModulesAttempted:
+            self._remoteModulesAttempted.add(target)
+            from .ModuleResolver import ModuleResolver
+            resolver = ModuleResolver(self.settings)
+            remote_path = resolver.resolve(target)
+            if remote_path:
+                self.log.devdebug(
+                    "Remote module '%s' downloaded to '%s'", target, remote_path)
+                self.modulePaths.append(remote_path)
+                self.modulePathConstruct = None
+                return self._loadModules(target)
+
         return (modules, warnings)
 
     def getSectionTypeInstance(self, target, logger=None):
