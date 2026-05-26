@@ -15,4 +15,10 @@
 "# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 "# </copyright>
 
-au BufRead,BufNewFile *.csmake,csmakefile set filetype=csmake
+if exists("b:did_ftplugin")
+  finish
+endif
+let b:did_ftplugin = 1
+
+setlocal commentstring=#\ %s
+setlocal comments=:#

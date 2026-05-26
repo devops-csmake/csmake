@@ -78,7 +78,8 @@ classifiers=
     <Csmake (python:package)>  CsmakeCore/*.py,
     <CsmakeModules (python:csmake-modules)> CsmakeModules/*.py,
     <man (groff:man-source)> docs/*.*.roff,
-    <vendor (python-vendor:python-packages)> CsmakeCore/_vendor/*
+    <vendor (python-vendor:python-packages)> CsmakeCore/_vendor/*,
+    <bash-completion (bash:completion)> bash/csmake-completion.bash
 
 [copyright@csmake-copyright]
 disclaimer=
@@ -216,6 +217,12 @@ map_manpages=
    group:{root}
    permissions:644
    rpmflags:doc
+map_bash_completion=
+   map: <bash-completion> -(1-1)-> {INSTALL_ROOT}/etc/bash_completion.d/[~~file~~]
+   copyright: csmake-copyright, csmake-cpt-copyright
+   owner:{root}
+   group:{root}
+   permissions:644
 
 #TODO: Module to make users....?  Probably not for this
 # NOTE: The uids/gids used in the files section need to match
@@ -332,3 +339,102 @@ description=Run all csmakemodule unit tests
 [command@test-secretprovider]
 description=Run all secret provider unit tests
 000=AllSecretProviderTests
+
+######################################################
+# Shared macOS installmap (used by HomebrewFormula and ApplePackage)
+# path_python-lib and path_python-script are resolved by each packager's
+# _map_path_python_lib / _map_path_python_script methods, keeping this
+# installmap platform-agnostic.
+
+[installmap@csmake-macos-installs]
+path_root=INSTALL_ROOT
+path_python-lib=PYTHON
+path_python-script=PYTHON_SCRIPT
+owner_root=root
+group_root=root
+
+map_bin_files=
+   map: <bin> -(1-1)-> {PYTHON_SCRIPT}/[~~file~~]
+   copyright: csmake-copyright, csmake-cpt-copyright
+   owner:{root}
+   group:{root}
+   permissions: 755
+map_Csmake=
+   map: <Csmake> -(1-1)-> {PYTHON}/CsmakeCore/[~~file~~]
+   copyright: csmake-copyright, csmake-cpt-copyright
+   owner:{root}
+   group:{root}
+   permissions: 644
+map_vendor=
+   map: <vendor> -(1-1)-> {PYTHON}/CsmakeCore/_vendor/[~~file~~]
+   copyright: vendor-coverage-orig,vendor-coverage-current
+   owner:{root}
+   group:{root}
+   permissions: 644
+map_CsmakeModules=
+   map: <CsmakeModules> -(1-1)-> {PYTHON}/CsmakeCore/CsmakeModules/[~~file~~]
+   copyright: csmake-copyright, csmake-cpt-copyright
+   owner:{root}
+   group:{root}
+   permissions: 644
+map_bash_completion=
+   map: <bash-completion> -(1-1)-> {INSTALL_ROOT}/etc/bash_completion.d/[~~file~~]
+   copyright: csmake-copyright, csmake-cpt-copyright
+   owner:{root}
+   group:{root}
+   permissions: 644
+
+######################################################
+# Homebrew formula packaging
+
+[HomebrewFormula@brew-csmake]
+package-version=1.0
+maps=csmake-macos-installs
+result=%(RESULTS)s/homebrew
+install-command=
+    prefix.install Dir["*"]
+
+[command@homebrew-only]
+description=Create a Homebrew formula and source tarball
+00=csmake, common-package-steps, brew-csmake
+
+######################################################
+# Homebrew bottle packaging
+
+[HomebrewBottle@bottle-csmake]
+package-version=1.0
+maps=csmake-macos-installs
+result=%(RESULTS)s/homebrew
+os-tag=arm64_sonoma
+# cellar=:any_skip_relocation   (default, correct for pure-Python)
+# url=https://...               (source tarball URL for fallback build)
+
+[command@homebrew-bottle]
+description=Create a Homebrew bottle archive and formula (arm64_sonoma)
+00=csmake, common-package-steps, bottle-csmake
+
+######################################################
+# Homebrew cask packaging (wraps the .pkg from apple-only)
+
+[HomebrewCask@cask-csmake]
+package-version=1.0
+result=%(RESULTS)s/homebrew
+url=https://github.com/OWNER/REPO/releases/download/v3.0.0/csmake-3.0.0-1.0.pkg
+artifact=%(RESULTS)s/applepkg/csmake-3.0.0-1.0.pkg
+
+[command@homebrew-cask]
+description=Create a Homebrew cask stanza wrapping the .pkg installer
+00=csmake, common-package-steps, apple-csmake, cask-csmake
+
+######################################################
+# Apple .pkg packaging
+
+[ApplePackage@apple-csmake]
+package-version=1.0
+maps=csmake-macos-installs
+result=%(RESULTS)s/applepkg
+install-location=/usr/local
+
+[command@apple-only]
+description=Create a macOS .pkg installer
+00=csmake, common-package-steps, apple-csmake
