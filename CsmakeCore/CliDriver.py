@@ -1105,26 +1105,46 @@ class CliDriver(object):
         import importlib.util as _ilu
 
         seen = set()
+
+        def _load_ext(ext_path):
+            """Load a single Extension__*.py file if not already loaded."""
+            if ext_path in seen:
+                return
+            seen.add(ext_path)
+            mod_name = 'CsmakeModules.' + os.path.basename(ext_path)[:-3]
+            if mod_name in sys.modules:
+                return
+            try:
+                spec = _ilu.spec_from_file_location(mod_name, ext_path)
+                mod  = _ilu.module_from_spec(spec)
+                sys.modules[mod_name] = mod
+                spec.loader.exec_module(mod)
+            except Exception as e:
+                self.log.debug(
+                    "Could not load csmake extension %s: %s",
+                    ext_path, str(e))
+
         for base in sys.path:
             if not base:
                 base = os.getcwd()
-            pattern = os.path.join(base, 'CsmakeModules', 'Extension__*.py')
-            for ext_path in sorted(glob.glob(pattern)):
-                if ext_path in seen:
-                    continue
-                seen.add(ext_path)
-                mod_name = 'CsmakeModules.' + os.path.basename(ext_path)[:-3]
-                if mod_name in sys.modules:
-                    continue
-                try:
-                    spec = _ilu.spec_from_file_location(mod_name, ext_path)
-                    mod  = _ilu.module_from_spec(spec)
-                    sys.modules[mod_name] = mod
-                    spec.loader.exec_module(mod)
-                except Exception as e:
-                    self.log.debug(
-                        "Could not load csmake extension %s: %s",
-                        ext_path, str(e))
+
+            # Direct scan: <base>/CsmakeModules/Extension__*.py
+            for ext_path in sorted(glob.glob(
+                    os.path.join(base, 'CsmakeModules', 'Extension__*.py'))):
+                _load_ext(ext_path)
+
+            # Subdirectory scan: <base>/<subdir>/CsmakeModules/Extension__*.py
+            # Mirrors _constructModulePaths() so extensions in installed
+            # packages (e.g. site-packages/CsmakeGHActions/CsmakeModules/)
+            # are found even when only the parent is on sys.path.
+            try:
+                for subdir in sorted(os.listdir(base)):
+                    for ext_path in sorted(glob.glob(
+                            os.path.join(base, subdir,
+                                         'CsmakeModules', 'Extension__*.py'))):
+                        _load_ext(ext_path)
+            except OSError:
+                pass
 
         # After all modules have self-registered, add their settings so
         # _getOptions() sees the new flags during argument parsing.
@@ -1182,6 +1202,17 @@ class CliDriver(object):
 
     def realmain(self):
         self._getCurrentProcesses()
+        # Seed sys.path from lazily-downloaded .csm packages so that both
+        # extension discovery and module loading see them without any network
+        # access (installed packages already live on sys.path via the
+        # system packaging).
+        try:
+            from .ModuleRegistry import ModuleRegistry
+            ModuleRegistry().seed_sys_path()
+        except Exception as _e:
+            import logging as _logging
+            _logging.getLogger(__name__).debug(
+                "ModuleRegistry.seed_sys_path failed (non-fatal): %s", _e)
         self._discoverExtensions()
         self._getOptions()
         self._executeOptions()
@@ -1636,12 +1667,12 @@ class CliDriver(object):
                     self.log.devdebug("Module '%s' was found", target)
                     return (modules, warnings)
 
-        # Nothing found locally — try auto-downloading from devops-csmake
+        # Nothing found locally — try auto-downloading via the module registry
         if len(modules) == 0 and target and target not in self._remoteModulesAttempted:
             self._remoteModulesAttempted.add(target)
-            from .ModuleResolver import ModuleResolver
-            resolver = ModuleResolver(self.settings)
-            remote_path = resolver.resolve(target)
+            from .ModuleRegistry import ModuleRegistry
+            registry = ModuleRegistry(self.settings)
+            remote_path = registry.find(target)
             if remote_path:
                 self.log.devdebug(
                     "Remote module '%s' downloaded to '%s'", target, remote_path)
