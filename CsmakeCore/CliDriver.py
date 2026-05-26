@@ -91,6 +91,27 @@ CSMAKE_LIBRARY_VERSION = "3.0.0"
 
 class CliDriver(object):
 
+    # Class-level extension registry.  Extensions self-register at import
+    # time by calling CliDriver.register_extension(MyExtensionClass).
+    _extensions = []
+
+    @classmethod
+    def register_extension(cls, ext_class):
+        """Register a csmake extension class.
+        Called by extension modules at module load time (not instance time).
+        Each extension class may provide:
+            BUILDSPEC_FLAG  - str CLI flag name (without '--') that, when
+                              present, overrides the normal --makefile loading.
+            get_settings()  - classmethod returning a settings dict in the
+                              same form as the CliDriver settings seed.
+            load_buildspec(driver) - classmethod that reads the extension's
+                              buildspec source and returns a sections dict
+                              suitable for RawConfigParser.read_dict(), or
+                              None if the extension does not apply.
+        """
+        if ext_class not in cls._extensions:
+            cls._extensions.append(ext_class)
+
     def __init__(self, settings={}, name='<name>', version='<version>'):
         self.currentPhase = 'default'
         self.settings = Settings(settings)
@@ -986,23 +1007,38 @@ class CliDriver(object):
         if not os.path.isfile(spec):
             self.log.error("File missing: build specification '%s' could not be found.", spec)
             return False
-        else:
-            self.buildspecLock.acquire()
-            try:
-                if spec.endswith('.yml') or spec.endswith('.yaml'):
-                    from .GHActionsFileReader import read_gha_workflow
-                    sections = read_gha_workflow(spec)
-                    self.buildspec.read_dict(sections)
-                    self.outBuildspec.read_dict(sections)
-                else:
-                    self.buildspec.read([spec])
-                    self.outBuildspec.read([spec])
-            finally:
-                self.buildspecLock.release()
-            return True
+        self.buildspecLock.acquire()
+        try:
+            self.buildspec.read([spec])
+            self.outBuildspec.read([spec])
+        finally:
+            self.buildspecLock.release()
+        return True
+
+    def injectBuildspec(self, sections):
+        """Inject a pre-parsed sections dict into the active buildspec.
+        Used by extensions that supply their own buildspec source."""
+        self.buildspecLock.acquire()
+        try:
+            self.buildspec.read_dict(sections)
+            self.outBuildspec.read_dict(sections)
+        finally:
+            self.buildspecLock.release()
 
     def _loadBuildspec(self):
-        makefiles = [ x.strip() for x in self.settings['makefile'].split(',') ]
+        source, ext = self._resolveActiveBuildspecSource()
+
+        if source == 'extension':
+            sections = ext.load_buildspec(self)
+            if sections is None:
+                self.log.error(
+                    "Extension buildspec flag '--%s' was set but produced "
+                    "no content.", ext.BUILDSPEC_FLAG)
+                return False
+            self.injectBuildspec(sections)
+            return True
+
+        makefiles = [x.strip() for x in self.settings['makefile'].split(',')]
         wasErrors = False
         for makefile in makefiles:
             wasErrors = self.includeBuildspec(makefile) and wasErrors
@@ -1055,8 +1091,98 @@ class CliDriver(object):
 
         os._exit(returncode)
 
+    def _discoverExtensions(self):
+        """Scan sys.path for CsmakeModules/*Extension.py and load them.
+
+        Each *Extension.py is expected to call
+        CliDriver.register_extension(MyExtensionClass) at module level,
+        which fires when the file is imported here.  After all extension
+        modules have been loaded, any settings they declare are injected
+        into self.settings so that _getOptions() can parse them from the
+        command line.
+        """
+        import glob
+        import importlib.util as _ilu
+
+        seen = set()
+        for base in sys.path:
+            if not base:
+                base = os.getcwd()
+            pattern = os.path.join(base, 'CsmakeModules', 'Extension__*.py')
+            for ext_path in sorted(glob.glob(pattern)):
+                if ext_path in seen:
+                    continue
+                seen.add(ext_path)
+                mod_name = 'CsmakeModules.' + os.path.basename(ext_path)[:-3]
+                if mod_name in sys.modules:
+                    continue
+                try:
+                    spec = _ilu.spec_from_file_location(mod_name, ext_path)
+                    mod  = _ilu.module_from_spec(spec)
+                    sys.modules[mod_name] = mod
+                    spec.loader.exec_module(mod)
+                except Exception as e:
+                    self.log.debug(
+                        "Could not load csmake extension %s: %s",
+                        ext_path, str(e))
+
+        # After all modules have self-registered, add their settings so
+        # _getOptions() sees the new flags during argument parsing.
+        for ext in self._extensions:
+            get_settings = getattr(ext, 'get_settings', None)
+            if callable(get_settings):
+                self.addOptions('', ext.get_settings())
+
+    def _resolveActiveBuildspecSource(self):
+        """Return ('extension', ext_class) or ('makefile', None).
+
+        Scans sys.argv left-to-right to find the last buildspec flag
+        (--makefile, --csmakefile, or any extension BUILDSPEC_FLAG).
+        When both a makefile flag and an extension flag are present,
+        the last one wins and a warning is emitted.
+        """
+        ext_flag_map = {
+            '--' + ext.BUILDSPEC_FLAG: ext
+            for ext in self._extensions
+            if getattr(ext, 'BUILDSPEC_FLAG', None)
+        }
+
+        if not ext_flag_map:
+            return ('makefile', None)
+
+        makefile_flags = {'--makefile', '--csmakefile'}
+        all_flags      = makefile_flags | set(ext_flag_map.keys())
+
+        last_source  = None   # ('makefile', None) | ('extension', ext)
+        saw_makefile = False
+        saw_extension = False
+
+        for arg in sys.argv[1:]:
+            flag = arg.split('=')[0]
+            if flag in makefile_flags:
+                last_source  = ('makefile', None)
+                saw_makefile = True
+            elif flag in ext_flag_map:
+                last_source  = ('extension', ext_flag_map[flag])
+                saw_extension = True
+
+        if saw_makefile and saw_extension:
+            if last_source[0] == 'extension':
+                flag_used = '--' + last_source[1].BUILDSPEC_FLAG
+                self.log.warning(
+                    "Both --makefile and %s were specified; "
+                    "using %s (appeared last on command line)",
+                    flag_used, flag_used)
+            else:
+                self.log.warning(
+                    "Both an extension buildspec flag and --makefile were "
+                    "specified; using --makefile (appeared last on command line)")
+
+        return last_source or ('makefile', None)
+
     def realmain(self):
         self._getCurrentProcesses()
+        self._discoverExtensions()
         self._getOptions()
         self._executeOptions()
 
