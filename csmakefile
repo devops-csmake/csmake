@@ -321,12 +321,19 @@ test=test*_*.py
 source-dir=CsmakeCore/
 resource-dir=%(WORKING)s/CsmakeCore/tests/SecretProvider
 
+[TestPython@test-ModuleDoc]
+test-dir=CsmakeCore/tests/
+test=testModuleDoc.py
+source-dir=CsmakeCore/
+resource-dir=%(WORKING)s/CsmakeCore/tests
+
 [command@test]
 description=Run testing
 000=test-FileInstance
 001=test-FileManager
 002=AllCsmakeModuleTests
 003=AllSecretProviderTests
+004=test-ModuleDoc
 
 [command@test-filetracker]
 description=Run all file tracker testing
@@ -339,6 +346,10 @@ description=Run all csmakemodule unit tests
 [command@test-secretprovider]
 description=Run all secret provider unit tests
 000=AllSecretProviderTests
+
+[command@test-moduledoc]
+description=Run the module documentation parser unit tests
+000=test-ModuleDoc
 
 ######################################################
 # Shared macOS installmap (used by HomebrewFormula and ApplePackage)

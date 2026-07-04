@@ -54,6 +54,25 @@ CSMAKE_SETTINGS={
         None,
         """Displays help for the given module (section type) name""",
         False],
+    "list-type-format" : [
+        "text",
+        """Output format for --list-type and --list-types
+
+           One of:
+             text - (default) human-readable, identical to historical output
+             json - structured JSON parsed from the module documentation
+             yaml - structured YAML (the same data as json)
+
+           The structured formats emit the documentation straight from the
+           modules (the module __doc__ "semi-YAML" standard described in
+           docs/MODULE_DOC_SCHEMA.md) so tooling and the documentation website
+           can consume module docs without re-parsing Python source.
+
+           Each module becomes an object with: name, summary, type, library,
+           implements, phases, options, examples, the ordered/faithful fields,
+           and 'raw' (byte-for-byte what the text format prints).""",
+        False,
+        "Format for --list-type(s): text|json|yaml"],
     "list-commands" : [
         False,
         """Displays all of the available commands

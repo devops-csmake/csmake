@@ -70,6 +70,7 @@ from .AspectResult import AspectResult
 from .AspectFlowControl import AspectFlowControl
 from .ParallelLaunchStack import ParallelLaunchStack
 from .MetadataManager import DefaultMetadataModule
+from . import ModuleDoc
 from .OutputTee import OutputTee
 from . import phases
 
@@ -391,6 +392,17 @@ class CliDriver(object):
         modules.append(('(built-in)', '~~phases~~', phases, phases.phases))
 
     def dumpTypes(self, singleType=None):
+        # Structured output (json/yaml) must be the only thing on stdout, so
+        # silence module-load chatter/warnings before they can interleave with
+        # the emitted document.  Guarded so drivers that do not define the
+        # setting keep the historical text behavior.
+        docFormat = 'text'
+        try:
+            docFormat = self.settings['list-type-format'] or 'text'
+        except Exception:
+            docFormat = 'text'
+        if docFormat != 'text':
+            self.log.forceQuiet()
         self._parseModulePaths()
         modules, warnings = self._loadModules()
         outputBlobs = {}
@@ -409,9 +421,11 @@ class CliDriver(object):
                 continue
 
             result = actualModule
+            originalDoc = None
             docString = "<<Module not documented>>"
             try:
-                docString = result.__doc__
+                originalDoc = result.__doc__
+                docString = originalDoc
                 if docString is not None and '\n' in docString:
                     doclines = docString.split('\n')
                     docString = "%s\n%s" % (
@@ -421,7 +435,8 @@ class CliDriver(object):
                 pass
             outputBlobs[name] = {
                 "path" : path,
-                "doc" : docString
+                "doc" : docString,
+                "rawdoc" : originalDoc
             }
 
         blobKeys = list(outputBlobs.keys())
@@ -434,6 +449,43 @@ class CliDriver(object):
                 self.chat("Error: Module (Section Type) not defined: %s" % singleType)
                 self.log.forceQuiet()
                 sys.exit(255)
+
+        # Structured output (--list-type-format=json|yaml): emit the module
+        # documentation straight from the modules, byte-clean on stdout, and
+        # skip the human-readable text rendering entirely.
+        if docFormat != 'text':
+            structured = [
+                ModuleDoc.parse_module_doc(
+                    key,
+                    outputBlobs[key].get('rawdoc'),
+                    path=outputBlobs[key]['path'])
+                for key in blobKeys ]
+            # Completeness: recover docs for any documented module that did not
+            # import (e.g. a sibling library on --modules-path whose runtime
+            # dependencies aren't installed in this checkout).  The docstring is
+            # all the doc engine needs, so read it from source via ast.  Only
+            # for the full catalog (singleType is None).
+            if singleType is None:
+                seen = set(outputBlobs.keys())
+                for pathtype, modPath in getattr(
+                        self, 'modulePathConstruct', []):
+                    packageDir = os.path.join(modPath, 'CsmakeModules')
+                    for parsed in ModuleDoc.discover_source_docs(
+                            packageDir, repo=modPath, skip=seen):
+                        structured.append(parsed)
+                        seen.add(parsed['name'])
+            try:
+                rendered = ModuleDoc.render(structured, docFormat)
+            except ValueError:
+                self.chat(
+                    "Error: Unknown --list-type-format: %s "
+                    "(expected text, json, or yaml)" % docFormat)
+                self.log.forceQuiet()
+                sys.exit(255)
+            sys.stdout.write(rendered + "\n")
+            sys.stdout.flush()
+            return
+
         for key in blobKeys:
             self.chat("_"*51)
             self.chat("")
@@ -1216,6 +1268,18 @@ class CliDriver(object):
         self._discoverExtensions()
         self._getOptions()
         self._executeOptions()
+
+        # Structured --list-type(s) output (json/yaml) must own stdout, so
+        # silence logging before any startup chatter (e.g. a missing default
+        # csmakefile) can leak into the emitted document.  Guarded so drivers
+        # that do not define the setting keep the historical behavior.
+        try:
+            if self.settings['list-type-format'] != 'text' and (
+                    self.settings['list-types']
+                    or self.settings['list-type'] is not None):
+                self.log.forceQuiet()
+        except Exception:
+            pass
 
         result = None
 
