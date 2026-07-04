@@ -327,6 +327,12 @@ test=testModuleDoc.py
 source-dir=CsmakeCore/
 resource-dir=%(WORKING)s/CsmakeCore/tests
 
+[TestPython@test-LauncherBootstrap]
+test-dir=CsmakeCore/tests/
+test=testLauncherBootstrap.py
+source-dir=CsmakeCore/
+resource-dir=%(WORKING)s/CsmakeCore/tests
+
 [command@test]
 description=Run testing
 000=test-FileInstance
@@ -334,6 +340,7 @@ description=Run testing
 002=AllCsmakeModuleTests
 003=AllSecretProviderTests
 004=test-ModuleDoc
+005=test-LauncherBootstrap
 
 [command@test-filetracker]
 description=Run all file tracker testing

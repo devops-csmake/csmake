@@ -17,13 +17,30 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # </copyright>
 
+import os.path
+import sys
+
+# Installed packages relocate CsmakeCore away from python's default path
+# (Homebrew keg: bin/ + libexec/, macOS pkg: bin/ + lib/python3/dist-packages).
+# Self-locate relative to the real launcher path so any installer can simply
+# lay the tree under a prefix.  Checkouts and dist-packages installs resolve
+# CsmakeCore without help and skip this entirely.
+try:
+    import CsmakeCore
+except ImportError:
+    _launcherdir = os.path.dirname(os.path.realpath(__file__))
+    for _libpath in ('../libexec', '../lib/python3/dist-packages'):
+        _candidate = os.path.normpath(os.path.join(_launcherdir, _libpath))
+        if os.path.isdir(os.path.join(_candidate, 'CsmakeCore')):
+            sys.path.insert(0, _candidate)
+            break
+
 try:
     from configparser import SafeConfigParser
 except:
     from configparser import ConfigParser as SafeConfigParser
 from CsmakeCore.Settings import Settings
 from CsmakeCore.CliDriver import CliDriver
-import sys
 
 CSMAKE_SETTINGS={
     "help": [
