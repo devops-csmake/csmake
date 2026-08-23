@@ -20,16 +20,26 @@ Downloads, verifies, and caches .csm packages from the
 devops-csmake/csmake-registry GitHub repository (or any configured
 registry with the same layout).
 
+Sources -- where packages are looked up -- are resolved by
+``SourceLayers`` (ordered, scoped, terminal-capable config layers; see
+that module).  Every configured source is queried, in priority order; a
+package name is claimed by the first source that offers it, never merged
+across sources.  Per-source cache files are namespaced by source id so
+two sources can never collide on disk, even if they offer a package of
+the same name.
+
 Cache layout
 ------------
 ~/.csmake/
   registry/
-    contents_listing.json        <- GitHub Contents API response for index/
-    contents_listing.json.etag   <- ETag for the above
+    listing/
+      <source-id>.json           <- directory listing (or static index.json)
+      <source-id>.json.etag           for that source, ETag-cached
     index/
-      csmake-ghactions.json      <- per-package index from registry repo
-      csmake-ghactions.json.etag
-      ...
+      <source-id>/
+        csmake-ghactions.json    <- per-package index from that source
+        csmake-ghactions.json.etag
+        ...
     combined-index.json          <- client-built aggregate; rebuilt when sources change
     combined-index.json.mtime    <- unix timestamp of last refresh
   modules/
@@ -61,21 +71,18 @@ except ImportError:                          # Python 2 fallback (best-effort)
     import urllib as _urllib_request
     _urllib_error = _urllib_request
 
+try:
+    from .SourceLayers import SourceLayers, DEFAULT_ECOSYSTEM as _ECOSYSTEM
+except ImportError:                          # standalone / test import
+    from SourceLayers import SourceLayers, DEFAULT_ECOSYSTEM as _ECOSYSTEM
+
 _log = logging.getLogger(__name__)
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 _CACHE_ROOT    = os.path.expanduser('~/.csmake/modules')
 _REGISTRY_CACHE = os.path.expanduser('~/.csmake/registry')
 
-# ── Default registry ────────────────────────────────────────────────────────
-_REGISTRY_OWNER  = 'devops-csmake'
-_REGISTRY_REPO   = 'csmake-registry'
-_REGISTRY_BRANCH = 'main'
 _GITHUB_API_BASE = 'https://api.github.com'
-_RAW_BASE        = 'https://raw.githubusercontent.com'
-
-_DEFAULT_REGISTRY_BASE = '%s/%s/%s/%s' % (
-    _RAW_BASE, _REGISTRY_OWNER, _REGISTRY_REPO, _REGISTRY_BRANCH)
 
 # ── How long the combined index is considered fresh without re-checking ─────
 _COMBINED_INDEX_TTL = 3600   # 1 hour in seconds
@@ -136,9 +143,9 @@ class ModuleRegistry(object):
             # add path to module search paths and retry
     """
 
-    def __init__(self, settings=None):
+    def __init__(self, settings=None, cwd=None):
         self.settings = settings or {}
-        self._registries = self._load_registries()
+        self._sources = SourceLayers(cwd=cwd).effective_sources(_ECOSYSTEM)
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -283,22 +290,6 @@ class ModuleRegistry(object):
                 return
         self._install_dependencies(manifest, combined)
 
-    # ── Registry configuration ────────────────────────────────────────────
-
-    def _load_registries(self):
-        """Return list of registry base URLs from config, or the default."""
-        config_path = os.path.expanduser('~/.csmake/config.json')
-        if os.path.isfile(config_path):
-            try:
-                with open(config_path) as f:
-                    config = json.load(f)
-                registries = config.get('registries')
-                if isinstance(registries, list) and registries:
-                    return registries
-            except Exception:
-                pass
-        return [_DEFAULT_REGISTRY_BASE]
-
     # ── Combined index ────────────────────────────────────────────────────
 
     def _get_combined_index(self):
@@ -336,44 +327,60 @@ class ModuleRegistry(object):
         return combined
 
     def _refresh_registry_cache(self):
-        """Fetch/update all per-package index files from the first working registry.
+        """Fetch/update per-package index files from ALL effective sources.
 
-        Uses the GitHub Contents API to list the ``index/`` directory, then
-        conditionally fetches each per-package JSON using ETag headers.
-        Returns ``True`` if any file was updated.
+        Every configured source is queried -- not just the first reachable
+        one -- so a lower-priority source's packages are still discoverable
+        when a higher-priority source is reachable but simply doesn't have
+        them.  Per-source cache files are namespaced by source id, so two
+        sources offering a package of the same name are cached separately
+        and never collide on disk.  Returns ``True`` if any file was
+        updated.
         """
-        for registry_base in self._registries:
+        changed = False
+        for source in self._sources:
             try:
-                pkg_names = self._list_registry_packages(registry_base)
-                changed = False
-                for name in pkg_names:
-                    if self._fetch_package_index(registry_base, name):
-                        changed = True
-                return changed
+                pkg_names = self._list_registry_packages(source)
             except Exception as e:
                 _log.debug(
-                    "ModuleRegistry: registry '%s' unavailable: %s",
-                    registry_base, e)
+                    "ModuleRegistry: source '%s' unavailable: %s",
+                    source['url'], e)
                 continue
-        return False
+            for name in pkg_names:
+                if self._fetch_package_index(source, name):
+                    changed = True
+        return changed
 
-    def _list_registry_packages(self, registry_base):
-        """Return list of package names from *registry_base*'s ``index/`` dir.
+    def _list_registry_packages(self, source):
+        """Return the package names available from *source*.
 
-        For raw.githubusercontent.com registries, translates to the GitHub
-        Contents API so no ``git`` binary is required.  Falls back to a
-        plain HTTP request for other registry types.
+        Dispatches on the source's declared ``type``:
+          - ``github-contents`` (default): GitHub Contents API for
+            raw.githubusercontent.com bases (no ``git`` binary required);
+            falls back to requesting ``<base>/index/`` directly for other
+            hosts (today's historical behavior for non-GitHub sources that
+            can serve a directory listing).
+          - ``static-index``: fetches ``<base>/index.json``, a flat JSON
+            array of package names.  This is what lets a plain
+            URL-addressable store (S3, nginx, an Artifactory generic repo)
+            serve as a registry with no directory listing or API at all.
 
-        Returns a list of package name strings (``<name>.json`` → ``<name>``).
+        Returns a list of package name strings.
         """
-        api_url = self._registry_base_to_contents_api(registry_base)
-
-        cache_path = os.path.join(_REGISTRY_CACHE, 'contents_listing.json')
+        sid = source['id']
+        cache_path = os.path.join(_REGISTRY_CACHE, 'listing', '%s.json' % sid)
         etag_path  = cache_path + '.etag'
 
+        is_static = source.get('type') == 'static-index'
         headers = {'User-Agent': 'csmake-module-registry/1.0'}
-        if api_url:
-            headers['Accept'] = 'application/vnd.github.v3+json'
+        if is_static:
+            target_url = source['url'].rstrip('/') + '/index.json'
+        else:
+            api_url = self._registry_base_to_contents_api(source['url'])
+            if api_url:
+                headers['Accept'] = 'application/vnd.github.v3+json'
+            target_url = api_url if api_url else (
+                source['url'].rstrip('/') + '/index/')
 
         cached_etag = None
         if os.path.isfile(etag_path):
@@ -384,9 +391,6 @@ class ModuleRegistry(object):
                     headers['If-None-Match'] = cached_etag
             except Exception:
                 pass
-
-        target_url = api_url if api_url else (
-            registry_base.rstrip('/') + '/index/')
 
         try:
             req = _urllib_request.Request(target_url, headers=headers)
@@ -412,8 +416,13 @@ class ModuleRegistry(object):
         except Exception:
             return []
 
+        if is_static:
+            # A flat JSON array of package names.
+            if isinstance(entries, list):
+                return [name for name in entries if isinstance(name, str)]
+            return []
+
         # GitHub Contents API returns a list of objects with 'name' and 'type'.
-        # A plain directory listing might be a dict of {filename: ...}.
         names = []
         if isinstance(entries, list):
             for entry in entries:
@@ -442,14 +451,18 @@ class ModuleRegistry(object):
         return '%s/repos/%s/%s/contents/index?ref=%s' % (
             _GITHUB_API_BASE, owner, repo, branch)
 
-    def _fetch_package_index(self, registry_base, pkg_name):
-        """Fetch ``index/<pkg_name>.json`` from *registry_base* with ETag caching.
+    def _fetch_package_index(self, source, pkg_name):
+        """Fetch ``index/<pkg_name>.json`` from *source* with ETag caching.
 
-        Returns ``True`` if the file was updated, ``False`` if unchanged (304)
-        or on failure.
+        Cached under the source's own id (``_REGISTRY_CACHE/index/<id>/``)
+        so two sources offering a package of the same name are cached to
+        different files -- never collide, never silently overwrite each
+        other's data.  Returns ``True`` if the file was updated, ``False``
+        if unchanged (304) or on failure.
         """
-        url        = '%s/index/%s.json' % (registry_base.rstrip('/'), pkg_name)
-        cache_path = os.path.join(_REGISTRY_CACHE, 'index', '%s.json' % pkg_name)
+        url        = '%s/index/%s.json' % (source['url'].rstrip('/'), pkg_name)
+        cache_path = os.path.join(
+            _REGISTRY_CACHE, 'index', source['id'], '%s.json' % pkg_name)
         etag_path  = cache_path + '.etag'
 
         try:
@@ -480,17 +493,27 @@ class ModuleRegistry(object):
             if e.code == 304:
                 return False   # Not modified — cached file is current
             _log.debug(
-                "ModuleRegistry: HTTP %s fetching index for '%s'",
-                e.code, pkg_name)
+                "ModuleRegistry: HTTP %s fetching index for '%s' from '%s'",
+                e.code, pkg_name, source['url'])
             return False
         except Exception as e:
             _log.debug(
-                "ModuleRegistry: failed to fetch index for '%s': %s",
-                pkg_name, e)
+                "ModuleRegistry: failed to fetch index for '%s' from '%s': %s",
+                pkg_name, source['url'], e)
             return False
 
     def _build_combined_index(self):
-        """Build the combined index from all cached per-package JSON files.
+        """Build the combined index from all cached per-source index files.
+
+        Sources are walked in priority order (highest first, matching
+        ``self._sources``).  A package name -- and each module name it
+        declares -- is claimed by the first source that offers it.
+        Lower-priority sources offering a package or module of the same
+        name are never merged in and never override the claim.  This is
+        what makes it safe to add a supplementary/public index alongside a
+        curated one: a lower-priority source can never "outbid" a
+        higher-priority one, which is exactly the shape of a
+        dependency-confusion attack.
 
         Returns a dict::
 
@@ -502,28 +525,32 @@ class ModuleRegistry(object):
               }
             }
         """
-        index_dir = os.path.join(_REGISTRY_CACHE, 'index')
-        combined  = {'module_index': {}, 'packages': {}}
+        combined = {'module_index': {}, 'packages': {}}
 
-        if not os.path.isdir(index_dir):
-            return combined
-
-        for fname in sorted(os.listdir(index_dir)):
-            if not fname.endswith('.json'):
+        for source in self._sources:
+            index_dir = os.path.join(_REGISTRY_CACHE, 'index', source['id'])
+            if not os.path.isdir(index_dir):
                 continue
-            fpath = os.path.join(index_dir, fname)
-            try:
-                with open(fpath) as f:
-                    pkg_data = json.load(f)
-            except Exception as e:
-                _log.debug("ModuleRegistry: could not parse '%s': %s", fpath, e)
-                continue
+            for fname in sorted(os.listdir(index_dir)):
+                if not fname.endswith('.json'):
+                    continue
+                fpath = os.path.join(index_dir, fname)
+                try:
+                    with open(fpath) as f:
+                        pkg_data = json.load(f)
+                except Exception as e:
+                    _log.debug(
+                        "ModuleRegistry: could not parse '%s': %s", fpath, e)
+                    continue
 
-            pkg_name = pkg_data.get('name', fname[:-5])
-            combined['packages'][pkg_name] = pkg_data
+                pkg_name = pkg_data.get('name', fname[:-5])
+                if pkg_name in combined['packages']:
+                    continue   # already claimed by a higher-priority source
+                combined['packages'][pkg_name] = pkg_data
 
-            for mod_name in pkg_data.get('provides_modules', []):
-                combined['module_index'][mod_name] = pkg_name
+                for mod_name in pkg_data.get('provides_modules', []):
+                    if mod_name not in combined['module_index']:
+                        combined['module_index'][mod_name] = pkg_name
 
         return combined
 

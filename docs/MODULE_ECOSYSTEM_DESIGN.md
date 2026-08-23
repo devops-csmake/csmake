@@ -47,7 +47,20 @@ Lessons from rpm, PyPI, and npm, adopted as hard rules:
    PR establishing a package name in the core index requires maintainer
    approval (see Registration).
 
-## Resolver and layered sources *(settled)*
+## Resolver and layered sources *(settled — implemented)*
+
+Implemented as `CsmakeCore/SourceLayers.py` (layer loading/merging/terminal
+resolution) and a refactored `CsmakeCore/ModuleRegistry.py` (consumes it for
+the `csmake-module` ecosystem). Only that ecosystem is wired up so far —
+GHActions'/WgetPicker's own fetch paths in other repos are a follow-up, not
+touched by this pass. Three real bugs were found and fixed along the way
+(none previously known): `_refresh_registry_cache` returned after the first
+*reachable* source, so a second configured source's packages were never
+even queried; per-package cache files from different sources would collide
+on disk with no provenance; and `_build_combined_index` overwrote by
+filename order rather than claiming by source priority, so "first index
+wins" wasn't actually implemented. All three are covered by regression
+tests (`testModuleRegistry.py`).
 
 One core service:
 
