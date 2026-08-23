@@ -95,7 +95,7 @@ config resolves, the generation manifest carries the integrity hashes
 (no-config mode) resolves live and floats; that is by design and should
 be documented as such.
 
-## Package format: .csm as wheel *(settled)*
+## Package format: .csm as wheel *(settled — implemented)*
 
 A .csm is a zip carrying `csmake-manifest.json` (metadata + per-file
 sha256). It additionally carries a wheel `dist-info` (METADATA / WHEEL /
@@ -112,7 +112,18 @@ Wheel-writing lives **once**, in core, as a `CsmakeCore` library
 csmake-packaging's `WheelPackage` derives from the same primitive for
 general Python projects.
 
-## Core vs. csmake-packaging split *(settled)*
+Implemented as `CsmakeCore/WheelWriter.py` (stdlib-only: METADATA/WHEEL/
+RECORD/top_level.txt generation, PEP 427 name/version escaping). Real
+interop bug found and fixed while porting `WheelPackage` onto it: the
+wheel filename's distribution/version segments and the dist-info
+directory name must use identical escaping (runs of non-alphanumerics →
+`_`), or a consumer deriving one from the other — as the reference
+`wheel` package's own reader does — computes the wrong path and can't
+find RECORD at all. Verified against that reference implementation, both
+in `testWheelWriter.py` and by building csmake-packaging's own wheel
+end-to-end and opening it with `wheel.wheelfile.WheelFile`.
+
+## Core vs. csmake-packaging split *(settled — implemented)*
 
 **Core owns its own substrate: format (read and write), acquisition,
 cache, and format primitives. csmake-packaging owns packaging other
@@ -120,35 +131,53 @@ people's software.** Consequences:
 
 - `CsmakeModulePackager` (and the index-entry emitter) promote to core —
   the `npm pack` precedent: making a package must not require fetching
-  a package.
+  a package. Moved to `CsmakeModules/CsmakeModulePackager.py` in core;
+  now also embeds wheel dist-info and supports a `registry-checkout`
+  option that merges the index entry into a local checkout on disk
+  (opening the PR stays a manual, explicit step).
 - `WheelPackage` stays in csmake-packaging, rebased onto the core wheel
-  primitive.
-- `DebianPackage` migrates **out** of core to csmake-packaging *(later)*
-  — autoloading makes this workable, and it dissolves the historical
-  core-privileges-Debian asymmetry.
+  primitive; also ported off Python 2 (`StringIO`, `sys.maxint`,
+  `.iteritems()`) in the process — it would have crashed immediately
+  under Python 3 before this pass.
+- `DebianPackage` **stays in core** *(revisited this session)* — moving
+  it would break the "a bare checkout builds the .deb" guarantee
+  `BUILDING` documents; the resulting core/packaging asymmetry (core
+  privileges Debian, every other packager needs csmake-packaging) is
+  accepted as a known inconsistency rather than fixed by breaking that
+  guarantee.
 
-## Index and registration *(settled)*
+## Index and registration *(settled — implemented)*
 
 The index is a directory of per-package JSON files in csmake's GitHub
 (module→package map via `provides_modules`, package→versions/urls/
 hashes). Author-controlled via the pithy flow:
 
-- CODEOWNERS entry per index file; a validating GitHub Action checks
-  sha256 presence/match, `provides_modules` against the artifact, and
-  ModuleDoc lint.
+- CODEOWNERS entry per index file (implemented:
+  `csmake-registry/CODEOWNERS`); a validating GitHub Action
+  (`.github/workflows/validate-index.yml`, running
+  `scripts/validate_index_entry.py`) checks sha256 presence/match and
+  `provides_modules` against the artifact. ModuleDoc lint is deferred —
+  no clean standalone distribution of `ModuleDoc.py` yet.
 - First PR establishing a package name: maintainer approval (the
-  namespace gate).
-- Subsequent version PRs from the file's owner: automerge on green CI.
+  namespace gate) — enforced via branch protection requiring the
+  CODEOWNERS review; **enabling that repo setting is a manual step**,
+  not something committed code can turn on.
+- Subsequent version PRs from the file's owner: automerge on green CI
+  *(automerge itself not yet wired up — the validation gate it depends
+  on is; automerge configuration is a repo-settings/workflow follow-up)*.
 - Registry history is a git log — auditable, mirrorable by clone, no
   service to operate.
 
-Core ships the authoring modules that build the .csm, generate the
-index entry, and open the PR, so publishing works from a bare csmake
-install.
+Core ships the authoring modules that build the .csm and generate the
+index entry (`CsmakeModulePackager`'s `registry-checkout` option); it
+merges the entry into a local registry checkout on disk. Opening the PR
+remains a manual, explicit step (publishing to others stays a confirmed
+action, not something automated).
 
 A static `index.json` manifest listing the package files makes any dumb
 file server a registry (the GitHub Contents API is one transport, not
-the protocol) *(near-term gap to close)*.
+the protocol) — **implemented**: `SourceLayers`' `static-index` source
+type, consumed by `ModuleRegistry`.
 
 ## Versioning and the module loader *(settled rules, proposed syntax)*
 

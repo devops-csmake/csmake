@@ -345,6 +345,18 @@ test=testModuleRegistry.py
 source-dir=CsmakeCore/
 resource-dir=%(WORKING)s/CsmakeCore/tests
 
+[TestPython@test-WheelWriter]
+test-dir=CsmakeCore/tests/
+test=testWheelWriter.py
+source-dir=CsmakeCore/
+resource-dir=%(WORKING)s/CsmakeCore/tests
+
+[TestPython@test-CsmakeModulePackager]
+test-dir=CsmakeCore/tests/
+test=testCsmakeModulePackager.py
+source-dir=CsmakeCore/
+resource-dir=%(WORKING)s/CsmakeCore/tests
+
 [command@test]
 description=Run testing
 000=test-FileInstance
@@ -355,6 +367,8 @@ description=Run testing
 005=test-LauncherBootstrap
 006=test-SourceLayers
 007=test-ModuleRegistry
+008=test-WheelWriter
+009=test-CsmakeModulePackager
 
 [command@test-filetracker]
 description=Run all file tracker testing

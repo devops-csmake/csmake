@@ -67,6 +67,12 @@ def _run_staged_csmake(launcher, workdir):
     """Run the staged launcher from a scratch cwd, isolated from the checkout."""
     env = dict(os.environ)
     env.pop('PYTHONPATH', None)
+    # CliDriver reads $PWD (not os.getcwd()) for its notion of cwd; a
+    # subprocess's inherited (stale) PWD must be corrected to match cwd=
+    # here, or module discovery can silently drop entries whenever the
+    # stale PWD happens to equal sys.path[0].  See
+    # testCsmakeModulePackager.py's _subprocess_env for how this was found.
+    env['PWD'] = workdir
     return subprocess.run(
         [sys.executable, launcher,
          '--list-types', '--list-type-format=json'],
