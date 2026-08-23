@@ -183,6 +183,43 @@ class TestUndocumented(unittest.TestCase):
         self.assertEqual(obj["options"], [])
 
 
+RPMPACKAGE_DOC = """Purpose: Build an RPM package
+       Type: Module   Library: csmake-packaging
+       Requires:
+           exec: rpmbuild, rpm2cpio
+           caps: docker-daemon
+    """
+
+LEGACY_REQUIRES_DOC = """Purpose: A module with a pre-schema Requires field
+       Type: Module   Library: csmake (core)
+       Requires:
+           csmake-providers
+           csmake-swak
+           n81
+    """
+
+
+class TestRequires(unittest.TestCase):
+    def test_exec_and_caps_parsed(self):
+        obj = ModuleDoc.parse_module_doc("RpmPackage", RPMPACKAGE_DOC)
+        self.assertEqual(obj["requires"]["exec"], ["rpmbuild", "rpm2cpio"])
+        self.assertEqual(obj["requires"]["caps"], ["docker-daemon"])
+
+    def test_no_requires_field_yields_empty(self):
+        obj = ModuleDoc.parse_module_doc("Shell", SHELL_DOC)
+        self.assertEqual(obj["requires"], {"exec": [], "caps": []})
+
+    def test_bare_lines_treated_as_legacy_exec(self):
+        # Matches phases.py's own pre-existing **requires= docstring
+        # example, which predates the exec:/caps: schema -- must keep
+        # parsing as a flat list rather than being dropped.
+        obj = ModuleDoc.parse_module_doc("Legacy", LEGACY_REQUIRES_DOC)
+        self.assertEqual(
+            obj["requires"]["exec"],
+            ["csmake-providers", "csmake-swak", "n81"])
+        self.assertEqual(obj["requires"]["caps"], [])
+
+
 class TestSerializers(unittest.TestCase):
     def setUp(self):
         self.objs = [

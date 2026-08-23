@@ -55,6 +55,7 @@ import json
 import logging
 import configparser
 import subprocess
+import shutil
 import textwrap
 import threading
 import uuid
@@ -71,6 +72,7 @@ from .AspectFlowControl import AspectFlowControl
 from .ParallelLaunchStack import ParallelLaunchStack
 from .MetadataManager import DefaultMetadataModule
 from . import ModuleDoc
+from . import SystemPackageHints
 from .OutputTee import OutputTee
 from . import phases
 
@@ -112,6 +114,21 @@ class CliDriver(object):
         """
         if ext_class not in cls._extensions:
             cls._extensions.append(ext_class)
+
+    # Class-level capability-checker registry for the system-requirements
+    # preflight (see _preflightCheck / docs/MODULE_ECOSYSTEM_DESIGN.md).
+    # A package can register a callable for a 'caps:' name it ships a
+    # checker for; an unregistered cap is reported as declared-but-
+    # unverifiable rather than failing by default.
+    _prereqCheckers = {}
+
+    @classmethod
+    def register_prereq_checker(cls, capname, checker):
+        """Register *checker* (a zero-arg callable returning bool) for the
+        capability name *capname*, as used in a module's Requires: caps:
+        field.  Called by a module at import time, mirroring
+        register_extension."""
+        cls._prereqCheckers[capname] = checker
 
     def __init__(self, settings={}, name='<name>', version='<version>'):
         self.currentPhase = 'default'
@@ -1920,6 +1937,76 @@ class CliDriver(object):
 
         return (modules, warnings)
 
+    def _preflightCheck(self, target, moduleClass):
+        """Report on a section's declared system requirements before it
+        runs -- knows and tells, never installs.  A module declares what
+        it needs via a docstring 'Requires:' field (exec:/caps:, parsed
+        by ModuleDoc); exec names are checked against PATH, caps names
+        against any registered checker (register_prereq_checker).  An
+        unregistered cap is reported as declared-but-unverifiable, which
+        is distinct from a checked, failing one and never escalates.
+
+        By default this only warns.  --strict-prereqs escalates a missing
+        exec or a failing (checked) cap to a hard failure -- raises, so
+        the caller's own exception handling reports it.  See
+        docs/MODULE_ECOSYSTEM_DESIGN.md.
+        """
+        docstring = getattr(moduleClass, '__doc__', None)
+        if not docstring:
+            return
+        requires = ModuleDoc.parse_module_doc(target, docstring)['requires']
+        if not requires['exec'] and not requires['caps']:
+            return
+
+        try:
+            strict = bool(self.settings['strict-prereqs'])
+        except Exception:
+            strict = False
+
+        missing_exec = [
+            name for name in requires['exec'] if shutil.which(name) is None]
+        failing_caps = []
+        unverifiable_caps = []
+        for capname in requires['caps']:
+            checker = self._prereqCheckers.get(capname)
+            if checker is None:
+                unverifiable_caps.append(capname)
+                continue
+            try:
+                ok = bool(checker())
+            except Exception:
+                self.log.exception(
+                    "Prereq checker for capability '%s' raised", capname)
+                ok = False
+            if not ok:
+                failing_caps.append(capname)
+
+        if not missing_exec and not failing_caps and not unverifiable_caps:
+            return
+
+        platform = SystemPackageHints.detect_platform()
+        report = (self.log.error if strict else self.log.warning)
+        for name in missing_exec:
+            hint = SystemPackageHints.hint_for(name, platform)
+            message = "Section '%s' declares it needs '%s', not found on PATH" % (
+                target, name)
+            if hint:
+                message += " (try installing '%s')" % hint
+            report(message)
+        for capname in failing_caps:
+            report(
+                "Section '%s' declares capability '%s', which is not "
+                "available" % (target, capname))
+        for capname in unverifiable_caps:
+            self.log.info(
+                "Section '%s' declares capability '%s' -- no checker "
+                "registered for it, unverifiable" % (target, capname))
+
+        if strict and (missing_exec or failing_caps):
+            raise RuntimeError(
+                "--strict-prereqs: section '%s' is missing requirements: %s"
+                % (target, ', '.join(missing_exec + failing_caps)))
+
     def getSectionTypeInstance(self, target, logger=None, pin=None):
         if logger is None:
             logger = Result(self.env, self.log.info)
@@ -1955,6 +2042,19 @@ class CliDriver(object):
             result = module.__dict__[target]
             if isinstance(result, types.ModuleType):
                 result = result.__dict__[target]
+        except Exception as e:
+            result = None
+
+        if result is not None:
+            # Distinct from the "improperly constructed" handling below:
+            # the class resolved fine, this is about whether it's safe to
+            # RUN, so --strict-prereqs failures get their own clear
+            # message rather than being folded into a construction error.
+            self._preflightCheck(target, result)
+
+        try:
+            if result is None:
+                raise e
             instance = result(self.environment, logger)
             return instance
         except Exception as e:

@@ -363,6 +363,24 @@ test=testVersionedLoader.py
 source-dir=CsmakeCore/
 resource-dir=%(WORKING)s/CsmakeCore/tests
 
+[TestPython@test-Phases]
+test-dir=CsmakeCore/tests/
+test=testPhases.py
+source-dir=CsmakeCore/
+resource-dir=%(WORKING)s/CsmakeCore/tests
+
+[TestPython@test-SystemPackageHints]
+test-dir=CsmakeCore/tests/
+test=testSystemPackageHints.py
+source-dir=CsmakeCore/
+resource-dir=%(WORKING)s/CsmakeCore/tests
+
+[TestPython@test-PreflightCheck]
+test-dir=CsmakeCore/tests/
+test=testPreflightCheck.py
+source-dir=CsmakeCore/
+resource-dir=%(WORKING)s/CsmakeCore/tests
+
 [command@test]
 description=Run testing
 000=test-FileInstance
@@ -376,6 +394,9 @@ description=Run testing
 008=test-WheelWriter
 009=test-CsmakeModulePackager
 010=test-VersionedLoader
+011=test-Phases
+012=test-SystemPackageHints
+013=test-PreflightCheck
 
 [command@test-filetracker]
 description=Run all file tracker testing

@@ -90,6 +90,21 @@ CSMAKE_SETTINGS={
            and 'raw' (byte-for-byte what the text format prints).""",
         False,
         "Format for --list-type(s): text|json|yaml"],
+    "strict-prereqs" : [
+        False,
+        """Fail the build if a section's declared system requirements
+           are missing or unverifiable, instead of only warning.
+
+           A module declares what it shells out to via a 'Requires:'
+           field in its docstring (exec: and/or caps: entries); a
+           csmakefile can supplement this per-spec via **requires= in
+           [~~phases~~]. Before each section runs, csmake checks its
+           declared exec names against PATH and its declared caps
+           against any registered capability checkers, and reports what
+           it finds -- it never installs anything. By default this is
+           only a warning; --strict-prereqs makes it a hard failure.""",
+        True,
+        "Fail on missing/unverifiable section requirements"],
     "list-commands" : [
         False,
         """Displays all of the available commands

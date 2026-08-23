@@ -24,6 +24,7 @@ import tempfile
 import zipfile
 
 from CsmakeCore.CsmakeModule import CsmakeModule
+from CsmakeCore import ModuleDoc
 from CsmakeCore import WheelWriter
 
 
@@ -132,13 +133,35 @@ class CsmakeModulePackager(CsmakeModule):
             file_bytes[archive_path] = data
             file_hashes[archive_path] = 'sha256:' + hashlib.sha256(data).hexdigest()
 
+        # ── Union each module's declared system requirements ───────────
+        # Read straight from source via ModuleDoc's ast-based extractor --
+        # no import needed, so this works even for a module whose runtime
+        # dependencies aren't installed in this checkout.  Per-module
+        # declarations are what feed CliDriver's preflight check at
+        # dispatch time; this is the package-level summary of the same
+        # data, useful for a closure walk before any module is loaded.
+        system_requires = {'exec': [], 'caps': []}
+        for fpath in file_list:
+            if os.path.basename(os.path.dirname(fpath)) != 'CsmakeModules':
+                continue
+            module_name = os.path.splitext(os.path.basename(fpath))[0]
+            docstring = ModuleDoc.extract_class_docstring(fpath, module_name)
+            if docstring is None:
+                continue
+            requires = ModuleDoc.parse_module_doc(module_name, docstring)['requires']
+            for key in ('exec', 'caps'):
+                for entry in requires[key]:
+                    if entry not in system_requires[key]:
+                        system_requires[key].append(entry)
+
         # ── Build csmake-manifest.json ────────────────────────────────
         manifest = {
-            'name'        : name,
-            'version'     : version,
-            'description' : desc,
-            'dependencies': deps,
-            'files'       : file_hashes,
+            'name'            : name,
+            'version'         : version,
+            'description'     : desc,
+            'dependencies'    : deps,
+            'files'           : file_hashes,
+            'system_requires' : system_requires,
         }
         manifest_bytes = json.dumps(
             manifest, indent=2, sort_keys=True).encode('utf-8')

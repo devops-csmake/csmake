@@ -288,7 +288,7 @@ work, not built yet.
 `[~~packages~~]` also takes over the package half of the old
 `**requires` example usage, leaving `**requires` purely system-level.
 
-## System dependencies *(settled tiers, proposed mechanics)*
+## System dependencies *(settled tiers — implemented at the dispatch scope)*
 
 Three tiers of ownership:
 
@@ -302,8 +302,11 @@ Three tiers of ownership:
    images.
 
 csmake **knows and tells, never installs** (the rpm-scriptlet lesson).
+Verified directly: a dedicated test patches `subprocess.run`/`Popen`/
+`os.system` to explode if called, then runs the preflight check against
+a missing requirement — it must never touch any of them.
 
-### Declaration: the docstring is the manifest *(proposed)*
+### Declaration: the docstring is the manifest *(settled — implemented)*
 
 Authors declare in the module docstring, in the ModuleDoc semi-YAML
 standard:
@@ -312,32 +315,50 @@ standard:
         exec: rpmbuild, gpg
         caps: docker-daemon
 
-`CsmakeModulePackager` extracts this via ModuleDoc at package time into
-per-module `system_requires` in the csmake-manifest. Granularity is
-per-module with a package-level shared default (mirrors module version
-defaulting). Publish lint soft-warns when a module visibly shells out
-but declares nothing.
+Implemented as `ModuleDoc._parse_requires` (a new `requires` field
+alongside the existing `dependencies`, which stays package-level). A
+bare, unlabeled line — `**requires=`'s only form before this schema
+existed — is treated as a legacy `exec` entry, so `phases.py`'s own
+long-standing docstring example (`csmake-providers` / `csmake-swak` /
+`n81`, one name per line) keeps parsing unchanged.
 
-### Checking *(proposed)*
+`CsmakeModulePackager` extracts this via `ModuleDoc.extract_class_docstring`
+(source-only, no import needed) at package time into per-module
+`system_requires` in the csmake-manifest, unioned across every included
+module. Per-module-vs-package-level granularity and the publish lint are
+not built — `CsmakeModulePackager` doesn't publish-lint anything yet.
 
-- `exec` entries: core checks PATH presence (portable, honest).
-- `caps` entries: pluggable checker modules (packages or the garden
-  ship them; e.g. a `docker-daemon` checker pings the socket). Unknown
-  caps report "declared, unverifiable" — never a hard default failure;
-  garden config or a strict flag escalates.
-- Translation table (exec name → apt/dnf/brew package hints): core
-  ships defaults as data, packages extend, garden config overrides —
-  the same layering as everything else.
-- Three scopes, one function: full closure at fetch time (the report),
-  command closure at build start (the warning), the owning section's
-  declared execs at dispatch (so failures read
-  "RpmPackage requires rpmbuild — apt install rpm", not a traceback
-  forty minutes in). `_process_requires` in phases.py becomes the
-  preflight entry point.
-- Machine-readable output (`--prereqs-format=json`, echoing
-  `--list-type-format`) feeds garden image generation *(later)*; the
-  fully hermetic path maps caps to pinned container images run via
-  docker-runtime/chroot *(later)*.
+### Checking *(settled — implemented at the "dispatch" scope)*
+
+- `exec` entries: checked via `shutil.which` (portable, honest).
+- `caps` entries: a pluggable checker registry
+  (`CliDriver.register_prereq_checker(capname, checker)`, mirroring
+  `register_extension`) — a package can register a callable for a cap
+  name it ships a checker for (e.g. a `docker-daemon` checker pinging the
+  socket). An unregistered cap reports "declared, unverifiable" and never
+  escalates to a failure even under `--strict-prereqs` — that flag
+  escalates *checked, failing* requirements, not merely-unknown ones. A
+  checker that raises is treated as a failure, not a crash.
+- Translation table: `CsmakeCore/SystemPackageHints.py`, seeded from what
+  today's modules already need (gpg, rpmbuild, dpkg-dev, chrpath, ...);
+  a lookup miss simply omits the hint rather than failing.
+- **Implemented scope: the owning section's declared requirements, at
+  dispatch** (`CliDriver._preflightCheck`, called from
+  `getSectionTypeInstance` right before a resolved class is instantiated
+  — the class is already in hand, so this costs nothing extra to reach).
+  Non-strict (default): warns and the section proceeds. `--strict-prereqs`:
+  raises before the section runs, with a message naming exactly what's
+  missing — "RpmPackage... not found on PATH (try installing 'rpm-build')"
+  — not a traceback partway through the section's own work.
+  **Not implemented**: the other two scopes from the original proposal —
+  a full-closure report at fetch time, and a whole-command union at build
+  start before any section runs. Per-section-at-dispatch turned out to be
+  the tractable, low-risk increment; the other two need a command's full
+  step tree resolved up front (including nested multicommand references),
+  which is a larger, separate piece of work.
+- Machine-readable output (`--prereqs-format=json`) and the fully
+  hermetic caps→pinned-container path are still *(later)*, alongside the
+  unbuilt upfront scopes above.
 
 ## Preinstall / fetch *(settled)*
 

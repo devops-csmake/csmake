@@ -24,6 +24,7 @@ testLauncherBootstrap.py.
 """
 import glob
 import json
+import textwrap
 import os
 import shutil
 import subprocess
@@ -150,6 +151,26 @@ class TestCsmakeModulePackagerIntegration(unittest.TestCase):
             self.assertIn('Author-email: test@example.com', text)
             self.assertIn(
                 'Classifier: Development Status :: 4 - Beta', text)
+
+    def test_system_requires_extracted_from_module_docstrings(self):
+        with open(os.path.join(
+                self.workdir, 'CsmakeModules', 'NeedsTools.py'), 'w') as f:
+            f.write(textwrap.dedent('''\
+                class NeedsTools(object):
+                    """Purpose: fixture module declaring requirements
+                       Requires:
+                           exec: rpmbuild, gpg
+                           caps: docker-daemon
+                    """
+                '''))
+        self._run()
+        csm_path = self._built_csm()
+        with zipfile.ZipFile(csm_path) as zf:
+            manifest = json.loads(zf.read('csmake-manifest.json'))
+        self.assertEqual(
+            sorted(manifest['system_requires']['exec']), ['gpg', 'rpmbuild'])
+        self.assertEqual(
+            manifest['system_requires']['caps'], ['docker-daemon'])
 
     def test_registry_checkout_merge(self):
         registry_dir = os.path.join(self.workdir, 'registry-checkout')

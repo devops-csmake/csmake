@@ -14,6 +14,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # </copyright>
+try:
+    from . import ModuleDoc
+except ImportError:                          # standalone / test import
+    import ModuleDoc
+
+
 class phases:
     """
     This is an *informational* section in the csmakefile for csmake
@@ -110,10 +116,19 @@ Example:
     def _process_default(self, default):
         return phases.parseSequence(default)
 
-    def _process_requires(self, default):
-        #TODO: Put broad testing for requirements here...
-        #       Be carefile not to add apt or other dependencies
-        return True
+    def _process_requires(self, value):
+        """Parse the spec-level system-requirements supplement.
+
+        Same exec:/caps: mini-schema as a module docstring's Requires:
+        field (see ModuleDoc._parse_requires) -- this is what only the
+        build itself knows about (e.g. a Shell section calling out to an
+        odd tool), supplementing what module authors declare. A bare,
+        unlabeled line (this option's only form before the schema
+        existed) is treated as an 'exec' entry, so existing **requires=
+        blocks keep parsing unchanged. Never installs anything -- see
+        CliDriver's preflight check, which reports and never acts.
+        """
+        return ModuleDoc._parse_requires(value)
 
     def _processPhases(self):
         for key, value in self.options.items():

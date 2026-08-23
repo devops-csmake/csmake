@@ -90,6 +90,7 @@ _FIELD_ALIASES = {
     "description": ["Description"],
     "environment": ["Environment"],
     "dependencies": ["Dependencies"],
+    "requires": ["Requires"],
     "install_map": ["Install Map Definitions"],
     "package_name_format": ["Package Name Format"],
     "file_tracking": ["File Tracking"],
@@ -114,6 +115,7 @@ _FIELD_LABELS = {
     "description": "Description",
     "environment": "Environment",
     "dependencies": "Dependencies",
+    "requires": "Requires",
     "install_map": "Install Map Definitions",
     "package_name_format": "Package Name Format",
     "file_tracking": "File Tracking",
@@ -328,6 +330,34 @@ def _parse_examples(value):
     return [b.strip("\n") for b in blocks if b.strip()]
 
 
+def _parse_requires(value):
+    """Parse a Requires field into ``{"exec": [...], "caps": [...]}``.
+
+    Recognizes ``exec:`` / ``caps:`` sub-lines (comma- or whitespace-
+    separated names). A bare, unlabeled line -- the only form
+    ``**requires=`` in ``~~phases~~`` supported before this schema existed
+    -- is treated as a legacy ``exec`` entry, so existing docstrings and
+    ``**requires=`` blocks keep parsing unchanged.
+    """
+    result = {"exec": [], "caps": []}
+    value = value.strip()
+    if not value:
+        return result
+    for line in value.split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+        m = re.match(r'^(exec|caps)\s*:\s*(.*)$', line, re.IGNORECASE)
+        if m:
+            key = m.group(1).lower()
+            names = re.split(r'[,\s]+', m.group(2).strip())
+        else:
+            key = "exec"
+            names = re.split(r'[,\s]+', line)
+        result[key].extend(n for n in names if n)
+    return result
+
+
 def parse_module_doc(name, docstring, path=None, repo=None):
     """Parse a module's ``__doc__`` into a structured documentation dict.
 
@@ -375,6 +405,7 @@ def parse_module_doc(name, docstring, path=None, repo=None):
         "joinpoints": _parse_phases(combined.get("joinpoints", "")),
         "options": _parse_options(combined.get("options", "")),
         "examples": _parse_examples(combined.get("examples", "")),
+        "requires": _parse_requires(combined.get("requires", "")),
         "fields": fields,
         "raw": raw,
         "source": {"path": path, "repo": repo},
