@@ -120,6 +120,18 @@ class CliDriver(object):
         self.scriptVersion = version
         self.modulePathConstruct = None
         self._remoteModulesAttempted = set()
+        # Package pins ([~~packages~~], **uses) -- see docs/MODULE_ECOSYSTEM_DESIGN.md.
+        # self._packagePins: ambient {package: version} from [~~packages~~].
+        # self._pinContext: stack of (package, version) -- the top entry is
+        #   the pin scope currently being loaded, consulted by load_module()
+        #   so a pinned package's own internal 'from CsmakeModules.X import X'
+        #   resolves within that SAME pinned version rather than the bare
+        #   default. Maintained only under the imp import lock, so a single
+        #   list is safe: csmake's custom loader serializes all module loads
+        #   through that lock, including any nested loads a module's own
+        #   top-level code triggers while it is being loaded.
+        self._packagePins = {}
+        self._pinContext = []
         #This will be replaced with a "Results" type object
         logging.basicConfig()
         self.log = logging.getLogger("%s.%s" % (
@@ -245,20 +257,29 @@ class CliDriver(object):
                 self.log.error("import %s: Subpackages are not allowed for csmake modules", fullname)
                 raise ImportError(fullname)
 
-            imp.acquire_lock()
-            try:
-                if 'CsmakeModules' in sys.modules:
-                    csmakeModulesModule = sys.modules['CsmakeModules']
-                    if nameparts[1] in csmakeModulesModule.__dict__:
-                        self.log.devdebug("Module already loaded")
-                        self.log.devdebug("Module: %s", csmakeModulesModule.__dict__[nameparts[1]])
-                        self.log.devdebug("All Modules: %s", str(sys.modules))
-                        return csmakeModulesModule.__dict__[nameparts[1]]
-            finally:
-                imp.release_lock()
+            # While loading a pinned package's own module (a **uses'd
+            # section, or a sibling import triggered from one), skip the
+            # bare-slot cache check below: the bare slot may hold a
+            # DIFFERENT version, and returning it here would defeat the
+            # whole point of the pin.  _loadModules(pin=...) does its own
+            # (separately-keyed) cache check for the pinned version.
+            currentPin = self._pinContext[-1] if self._pinContext else None
+
+            if currentPin is None:
+                imp.acquire_lock()
+                try:
+                    if 'CsmakeModules' in sys.modules:
+                        csmakeModulesModule = sys.modules['CsmakeModules']
+                        if nameparts[1] in csmakeModulesModule.__dict__:
+                            self.log.devdebug("Module already loaded")
+                            self.log.devdebug("Module: %s", csmakeModulesModule.__dict__[nameparts[1]])
+                            self.log.devdebug("All Modules: %s", str(sys.modules))
+                            return csmakeModulesModule.__dict__[nameparts[1]]
+                finally:
+                    imp.release_lock()
 
             self.log.devdebug("Loading module for the first time")
-            modules, warnings = self._loadModules(nameparts[1])
+            modules, warnings = self._loadModules(nameparts[1], pin=currentPin)
             if len(warnings) != 0:
                 self.log.warning("import %s:  There were some problems")
                 for warning in warnings:
@@ -708,6 +729,28 @@ class CliDriver(object):
             if self.modulePaths != ['+local', '+path']:
                 self.log.info("Module paths is modified: %s", self.modulePaths)
 
+    def _parsePin(self, usesSpec):
+        """Parse a **uses value ('pkgname@version') into (pkgname, version).
+
+        Returns None (and logs a warning) for anything malformed -- a
+        section with a broken pin falls back to normal unpinned
+        resolution rather than failing the whole build.
+        """
+        if not usesSpec or '@' not in usesSpec:
+            self.log.warning(
+                "**uses '%s' is not in 'package@version' form; ignoring",
+                usesSpec)
+            return None
+        pkgname, _, version = usesSpec.strip().partition('@')
+        pkgname = pkgname.strip()
+        version = version.strip()
+        if not pkgname or not version:
+            self.log.warning(
+                "**uses '%s' is not in 'package@version' form; ignoring",
+                usesSpec)
+            return None
+        return (pkgname, version)
+
     def _afterLoadSettings(self):
         """This is called after the settings are loaded and ready for consumption"""
         pass
@@ -857,7 +900,13 @@ class CliDriver(object):
             self.log.devdebug("overrideOptions: %s", str(overrideOptions))
             self.log.devdebug("Looking up module: %s", sectionType)
 
-            execinstance = self.getSectionTypeInstance(sectionType, resultObject)
+            pin = None
+            usesSpec = stepdict.get('**uses')
+            if usesSpec:
+                pin = self._parsePin(usesSpec)
+
+            execinstance = self.getSectionTypeInstance(
+                sectionType, resultObject, pin=pin)
             #TODO: Give section module instance its id - short and full
             self.log.devdebug("Lookup result is: %s", execinstance)
             if execinstance is None:
@@ -1327,6 +1376,13 @@ class CliDriver(object):
         else:
             self.phasesDecl = phases.phases(None, self.log)
 
+        # Load ambient package pins: [~~packages~~] pkgname=version, the
+        # spec-level default consulted when a section has no **uses of its
+        # own.  See docs/MODULE_ECOSYSTEM_DESIGN.md.
+        if self.buildspec.has_section('~~packages~~'):
+            for pkgname, version in self.buildspec.items('~~packages~~'):
+                self._packagePins[pkgname] = version.strip()
+
         #Inclusions could be added here, though it might be better to just
 
         #Figure out what to do first....
@@ -1620,7 +1676,103 @@ class CliDriver(object):
         self.modulePathConstruct = allPaths
         return allPaths
 
-    def _loadModules(self, target = ''):
+    def _pinnedPackageRoot(self, pkgname, version):
+        """Return the on-disk root for pkgname@version, installing it via
+        the module registry first if it isn't already cached.  Returns
+        None if it can't be resolved (a warning is logged by the caller).
+
+        A freshly-triggered install re-seeds sys.path: if this pin's
+        version turns out to be the greatest one now cached for pkgname,
+        an unpinned section elsewhere in the same build should see it too
+        ("greatest version among **uses pins, when no ambient pin exists"
+        -- see docs/MODULE_ECOSYSTEM_DESIGN.md). seed_sys_path() re-scans
+        the cache fresh each call and only inserts paths not already on
+        sys.path, so this is safe to call repeatedly. _constructModulePaths
+        memoizes its result from sys.path, so that cache must be dropped
+        too -- otherwise a later unpinned lookup keeps using the path list
+        computed before this install happened (mirrors how the existing
+        registry-autoload fallback below already invalidates it after
+        appending a freshly-downloaded module's own path).
+        """
+        root = os.path.join(
+            os.path.expanduser('~/.csmake/modules'), pkgname, version)
+        if os.path.isdir(root):
+            return root
+        from .ModuleRegistry import ModuleRegistry
+        registry = ModuleRegistry(self.settings)
+        installed = registry.install(pkgname, version=version)
+        if installed:
+            registry.seed_sys_path()
+            self.modulePathConstruct = None
+        return installed
+
+    def _loadPinnedModule(self, target, pin):
+        """Try to load *target* specifically from pin=(pkgname, version)'s
+        own cached root.  Returns ([], []) if that package doesn't provide
+        *target* -- the caller falls through to the normal unpinned search
+        in that case (covers core-shipped and third-party dependencies a
+        pinned package relies on, e.g. a packaging module subclassing
+        core's Packager).
+
+        Loaded modules are cached and returned under a mangled sys.modules
+        key private to this (target, package, version) triple -- distinct
+        from the bare slot other, unpinned code sees, so pinned loads are
+        strictly additive and never shadow anything.
+        """
+        pkgname, version = pin
+        root = self._pinnedPackageRoot(pkgname, version)
+        if root is None:
+            self.log.warning(
+                "**uses %s@%s: could not resolve; falling back to "
+                "unpinned resolution for '%s'", pkgname, version, target)
+            return [], []
+
+        packagePath = "%s/CsmakeModules" % root
+        modulePath = "%s/%s.py" % (packagePath, target)
+        if not os.path.isfile(modulePath):
+            return [], []
+
+        mangledName = "%s@@%s@@%s" % (target, pkgname, version)
+
+        imp.acquire_lock()
+        try:
+            existing = sys.modules.get(mangledName)
+        finally:
+            imp.release_lock()
+        if existing is not None:
+            actualModule = existing.__dict__.get(target)
+            return [(packagePath, target, existing, actualModule)], []
+
+        warnings = []
+        self._pinContext.append(pin)
+        try:
+            imp.acquire_lock()
+            try:
+                module = imp.load_source(mangledName, modulePath)
+                sys.modules[mangledName] = module
+            finally:
+                imp.release_lock()
+        except Exception as e:
+            trbk = traceback.format_exc()
+            warnings.append(self._reportLoadModuleError(target, packagePath, e, trbk))
+            return [], warnings
+        finally:
+            self._pinContext.pop()
+
+        actualModule = None
+        try:
+            actualModule = module.__dict__[target]
+            if isinstance(actualModule, types.ModuleType):
+                actualModule = actualModule.__dict__[target]
+        except Exception:
+            warnings.append([
+                "There is a naming problem with module '%s'" % target])
+            self.log.exception(
+                "There was a naming problem with module '%s'", target)
+
+        return [(packagePath, target, module, actualModule)], warnings
+
+    def _loadModules(self, target = '', pin=None):
         """Yes, this is a custom import routine to avoid the manner in
            which python deals with packages broken across paths.
            In csmake we want to support the notion of being able to
@@ -1633,7 +1785,24 @@ class CliDriver(object):
            write fragile package path patching code that could break
            the normal functioning of csmake.
 
+           pin, when given, is a (package, version) tuple (see
+           _parsePin/**uses).  The pinned package's own cached root is
+           tried FIRST; if it doesn't provide *target*, resolution falls
+           through to the normal search below unchanged -- "pinned
+           package, then core, then bare" from
+           docs/MODULE_ECOSYSTEM_DESIGN.md.  A pinned load never touches
+           the bare sys.modules slot, so with pin=None (always true
+           unless something is actually pinned) this method's behavior is
+           unchanged from before pins existed.
+
            returns [(path, name, module)], [warnings]"""
+
+        if pin is not None:
+            pinnedModules, pinnedWarnings = self._loadPinnedModule(target, pin)
+            if pinnedModules:
+                return pinnedModules, pinnedWarnings
+            # Not provided by the pinned package -- fall through to the
+            # normal (core / bare) search below.
 
         allPaths = self._constructModulePaths()
 
@@ -1736,7 +1905,12 @@ class CliDriver(object):
             self._remoteModulesAttempted.add(target)
             from .ModuleRegistry import ModuleRegistry
             registry = ModuleRegistry(self.settings)
-            remote_path = registry.find(target)
+            # Ambient [~~packages~~] pins only matter for what gets fetched
+            # here -- a dev checkout / --modules-path entry (layer zero,
+            # versionless) already won above if it had *target*, and this
+            # branch only runs when nothing local provided it.
+            remote_path = registry.find(
+                target, pinned_versions=self._packagePins or None)
             if remote_path:
                 self.log.devdebug(
                     "Remote module '%s' downloaded to '%s'", target, remote_path)
@@ -1746,10 +1920,24 @@ class CliDriver(object):
 
         return (modules, warnings)
 
-    def getSectionTypeInstance(self, target, logger=None):
+    def getSectionTypeInstance(self, target, logger=None, pin=None):
         if logger is None:
             logger = Result(self.env, self.log.info)
-        modules, warnings = self._loadModules(target)
+        # Python's own import machinery auto-populates sys.modules under
+        # the dotted 'CsmakeModules.<Name>' key as a side effect of the
+        # legacy find_module/load_module loader protocol -- purely its
+        # own bookkeeping; nothing in this class ever reads that key (our
+        # caches are the bare CsmakeModulesModule dict, for the unpinned
+        # case, and a pin-mangled sys.modules key, for a pinned one). Left
+        # alone, that auto-cache short-circuits Python's import statement
+        # before load_module() is even called again, so a PREVIOUS
+        # section's pin could leak into a later section with a different
+        # (or no) pin purely via Python's own caching. Clearing it once
+        # per section dispatch is safe (we never rely on it for anything)
+        # and forces every section to resolve fresh.
+        for key in [k for k in sys.modules if k.startswith('CsmakeModules.')]:
+            del sys.modules[key]
+        modules, warnings = self._loadModules(target, pin=pin)
         if len(warnings) != 0:
             self.log.info("There were problems loading '%s'" % target)
             for warning in warnings:

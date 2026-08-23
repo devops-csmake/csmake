@@ -179,34 +179,69 @@ file server a registry (the GitHub Contents API is one transport, not
 the protocol) — **implemented**: `SourceLayers`' `static-index` source
 type, consumed by `ModuleRegistry`.
 
-## Versioning and the module loader *(settled rules, proposed syntax)*
+## Versioning and the module loader *(settled — implemented)*
 
-Modules carry versions; they default to their package's version, with
-per-module overrides as author-side metadata (`provides_modules`
-becomes name→version). Consumers pin **packages**; pinning a module is
-sugar for pinning the package that provides it.
+Modules carry versions; they default to their package's version. Consumers
+pin **packages**; pinning a module would be sugar for pinning the package
+that provides it (per-module version overrides in `provides_modules`
+remain future work — not needed for the loader mechanism itself).
 
-**Loader projection**: versioned cache roots
-(`~/.csmake/modules/<pkg>/<ver>/`) project into the flat CsmakeModules
-namespace. The newest version *in play in this build* takes the bare
-name; other in-play versions take identifier-mangled versioned names
-(e.g. `RpmPackage__v1_1_4`). Nothing on disk is renamed — projection is
-a path-construction-time decision, made under the existing imp lock.
+**Loader projection, as built**: a pin is resolved *per section*, not as a
+single global "bare name owner" computed up front. `_loadModules` gets an
+optional `pin=(package, version)`; when given, it tries that package's own
+cached root (`~/.csmake/modules/<pkg>/<ver>/CsmakeModules/<Name>.py`)
+first, loading a match under an internal mangled `sys.modules` key
+(`Name@@package@@version`) that never touches the bare/unpinned slot. If
+the pinned root doesn't provide the target, resolution falls through to
+the normal search unchanged — "pinned package, then core, then bare."
+With no pin anywhere, this whole path is never entered, so the governing
+invariant (byte-identical to pre-pin behavior) holds by construction
+rather than by the two implementations happening to agree.
 
-Two safety rules:
+Two safety rules, both realized directly by the existing architecture
+rather than needing new machinery:
 
-- **Intra-package references bind to their own package's version.**
-  While loading package P@v, `CsmakeModules.*` lookups resolve first
-  within P@v, then core, then bare. (An internal reference is a
-  reference *from* that package, so it takes the package's version —
-  the same defaulting rule modules themselves follow.)
-- **Core classes never duplicate.** `CsmakeModule` and other core base
-  classes load from core exactly once, so no isinstance-across-copies
-  hazards. Sections interact through the environment and file tracker
-  (data, not object graphs), which is what makes side-by-side versions
-  viable at all.
+- **Intra-package references bind to their own package's version.** A
+  loading-context stack (`self._pinContext`) is pushed with the active pin
+  before `imp.load_source` executes a pinned module's top-level code, and
+  popped after. `load_module` (the custom import hook backing
+  `CsmakeModules.*` lookups) checks this stack, so a sibling import
+  triggered *during* that load — `from CsmakeModules.Helper import
+  Helper` — resolves within the same pinned version.
+- **Core classes never duplicate.** Falls out for free: `from
+  CsmakeCore.CsmakeModule import CsmakeModule` is an ordinary Python
+  package import, never routed through the custom `CsmakeModules` loader
+  at all, pinned or not.
 
-### Pin syntax *(proposed)*
+**Two subtle bugs found and fixed while implementing this** (both
+invisible until multiple versions were actually exercised side by side in
+the same build):
+
+- Python's own import machinery auto-populates `sys.modules` under the
+  *dotted* `CsmakeModules.<Name>` key as a side effect of the legacy
+  `find_module`/`load_module` loader protocol — a cache nothing in
+  csmake's own code reads (its caches are the bare `CsmakeModulesModule`
+  dict and the pin-mangled key), but one that short-circuits the import
+  statement *before* `load_module` is ever called again. Left alone, a
+  version resolved for one section leaked into a later section with a
+  different pin purely via this side-channel cache. Fixed by clearing all
+  `CsmakeModules.*` dotted entries once per section dispatch.
+- `_constructModulePaths` memoizes its result from `sys.path`. A `**uses`
+  pin that triggers a fresh install re-seeds `sys.path` (so an unpinned
+  section elsewhere can see the newly-installed version as "greatest in
+  play" — see resolution tier 3 below), but without also dropping the
+  memoized path list, a later unpinned lookup kept using the list computed
+  *before* that install happened. Fixed by invalidating
+  `modulePathConstruct` alongside the reseed, mirroring how the
+  pre-existing registry-autoload fallback already did the same after
+  appending its own freshly-downloaded path.
+
+Both are covered by regression tests in `testVersionedLoader.py`, including
+one that distinguishes "greatest version actually installed in this
+build" from "whatever the registry calls latest" — the two must not be
+conflated, and only the fix above keeps them apart correctly.
+
+### Pin syntax *(settled — implemented)*
 
 Ambient spec-level pins in a built-in passive section, exact versions
 only (ranges live in package manifests as author compatibility claims,
@@ -223,18 +258,32 @@ for csmake-processed options; deliberate GHA echo; no grammar impact on
     [RpmPackage@rpm-legacy]
     **uses=csmake-packaging@1.1.4
 
-**Resolution order for package P at section S:**
+**Resolution order for package P at section S, as implemented:**
 
-1. S's `**uses` pin.
-2. Ambient pin from the highest-precedence config layer
-   (terminal garden > project `[~~packages~~]` > user config).
-3. Greatest version among other sections' `**uses` pins for P
-   (fires only when no ambient pin exists).
-4. The cache generation's default for P.
+1. S's `**uses` pin — tried against P@v's own cached root directly; a
+   miss falls through to (3) rather than failing.
+2. `[~~packages~~]`'s ambient pin for P — consulted specifically inside
+   the pre-existing registry-autoload fallback (the "nothing found
+   locally" branch), via a new `pinned_versions` argument to
+   `ModuleRegistry.find`. A dev checkout / `--modules-path` entry (layer
+   zero, versionless) already won in step 3 if it had the module, so this
+   only matters when nothing local provides it.
+3. Normal `+local`/`+path` search — in practice this is where "greatest
+   version among other sections' `**uses` pins" actually happens: each
+   `**uses` that triggers a fresh install re-seeds `sys.path` with
+   whatever is now the greatest cached version for P (see the bug-fix
+   note above), so an unpinned section's ordinary search finds it here
+   without any separate "collect every pin and compare" step.
+4. Registry `latest` (today's existing auto-download fallback, now also
+   honoring the `[~~packages~~]` pin from step 2 first).
 
-Registry "latest" participates only in no-config mode, where the live
-registry effectively is the generation. Preflight lints that `**uses`
-names a package providing the section's type.
+**Simplified relative to the original proposal**: ambient
+`[~~packages~~]` pins are not yet integrated with `SourceLayers`' own
+layering (terminal garden / project / user) — they're a single,
+buildspec-level dict, consulted only at the registry-fallback point
+described above. Extending them to interact with source layers, and the
+cache-generation default (tier 4 in the original proposal), are Phase 5
+work, not built yet.
 
 `[~~packages~~]` also takes over the package half of the old
 `**requires` example usage, leaving `**requires` purely system-level.

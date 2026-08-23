@@ -357,6 +357,12 @@ test=testCsmakeModulePackager.py
 source-dir=CsmakeCore/
 resource-dir=%(WORKING)s/CsmakeCore/tests
 
+[TestPython@test-VersionedLoader]
+test-dir=CsmakeCore/tests/
+test=testVersionedLoader.py
+source-dir=CsmakeCore/
+resource-dir=%(WORKING)s/CsmakeCore/tests
+
 [command@test]
 description=Run testing
 000=test-FileInstance
@@ -369,6 +375,7 @@ description=Run testing
 007=test-ModuleRegistry
 008=test-WheelWriter
 009=test-CsmakeModulePackager
+010=test-VersionedLoader
 
 [command@test-filetracker]
 description=Run all file tracker testing

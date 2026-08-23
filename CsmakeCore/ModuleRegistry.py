@@ -175,12 +175,17 @@ class ModuleRegistry(object):
                 sys.path.insert(0, path)
                 _log.debug("seed_sys_path: added %s", path)
 
-    def find(self, module_name):
+    def find(self, module_name, pinned_versions=None):
         """Look up *module_name*, downloading its package if necessary.
 
         Returns the local package root (the directory whose ``CsmakeModules/``
         subdirectory contains *module_name*) on success, or ``None`` on
         failure.
+
+        ``pinned_versions``, when given, is a ``{package_name: version}``
+        dict (ambient ``[~~packages~~]`` pins) -- if *module_name*'s
+        providing package is in it, that exact version is installed
+        instead of ``latest``.
 
         Also installs dependencies into the cache and adds their roots to
         ``sys.path`` so that companion library imports work immediately.
@@ -196,7 +201,8 @@ class ModuleRegistry(object):
             _log.debug("ModuleRegistry.find: '%s' not in index", module_name)
             return None
 
-        return self.install(pkg_name, combined=combined)
+        pinned_version = (pinned_versions or {}).get(pkg_name)
+        return self.install(pkg_name, version=pinned_version, combined=combined)
 
     def install(self, package_name, version=None, combined=None):
         """Install *package_name* (downloading from the registry if needed).
