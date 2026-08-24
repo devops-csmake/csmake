@@ -190,12 +190,12 @@ RPMPACKAGE_DOC = """Purpose: Build an RPM package
            caps: docker-daemon
     """
 
-LEGACY_REQUIRES_DOC = """Purpose: A module with a pre-schema Requires field
+PROSE_REQUIRES_DOC = """Purpose: A module with a pre-schema, free-form Requires field
        Type: Module   Library: csmake (core)
        Requires:
-           csmake-providers
-           csmake-swak
-           n81
+           coverage (>= 4.0 preferred)
+               (apt-get install python-coverage
+                or pip install coverage)
     """
 
 
@@ -209,15 +209,28 @@ class TestRequires(unittest.TestCase):
         obj = ModuleDoc.parse_module_doc("Shell", SHELL_DOC)
         self.assertEqual(obj["requires"], {"exec": [], "caps": []})
 
-    def test_bare_lines_treated_as_legacy_exec(self):
-        # Matches phases.py's own pre-existing **requires= docstring
-        # example, which predates the exec:/caps: schema -- must keep
-        # parsing as a flat list rather than being dropped.
-        obj = ModuleDoc.parse_module_doc("Legacy", LEGACY_REQUIRES_DOC)
+    def test_prose_requires_field_yields_empty_not_misparsed(self):
+        # Regression test: TestPython.py's own pre-existing Requires:
+        # field is free-form prose written before this schema existed
+        # ("coverage (>= 4.0 preferred) (apt-get install ...)"). A naive
+        # bare-line-as-exec-list fallback would tokenize this into
+        # nonsense exec names ('(>=', '4.0', 'preferred)', ...) and the
+        # preflight check would then warn about all of them being
+        # missing from PATH. Module docstrings must stay lenient: only
+        # exec:/caps: sub-headers are structured; anything else is
+        # silently ignored, never guessed at.
+        obj = ModuleDoc.parse_module_doc("Prose", PROSE_REQUIRES_DOC)
+        self.assertEqual(obj["requires"], {"exec": [], "caps": []})
+
+    def test_legacy_bare_as_exec_opt_in_for_requires_supplement(self):
+        # Only **requires= in ~~phases~~ opts into this (its own
+        # established convention was genuinely "one name per line") --
+        # see phases.py._process_requires and testPhases.py.
+        result = ModuleDoc._parse_requires(
+            "csmake-providers\ncsmake-swak\nn81", legacy_bare_as_exec=True)
         self.assertEqual(
-            obj["requires"]["exec"],
-            ["csmake-providers", "csmake-swak", "n81"])
-        self.assertEqual(obj["requires"]["caps"], [])
+            result["exec"], ["csmake-providers", "csmake-swak", "n81"])
+        self.assertEqual(result["caps"], [])
 
 
 class TestSerializers(unittest.TestCase):

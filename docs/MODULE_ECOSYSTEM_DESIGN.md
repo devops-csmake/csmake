@@ -1,9 +1,10 @@
 # csmake Module Ecosystem Design
 
-Status: **draft** — distilled from design discussion, 2026-08-23.
-Sections marked *(settled)* reflect agreed direction; *(proposed)* are
-concrete proposals awaiting final blessing; *(later)* are noted for a
-future phase.
+Status: **implemented** — all six phases below landed on
+`adding-ghactions-auto-download`, 2026-08-23. Sections marked
+*(implemented)* describe what's actually in the tree, with real bugs
+found along the way called out inline; *(later)* items in "Open
+questions" are genuine follow-ups, not yet built.
 
 ## Vision
 
@@ -365,11 +366,25 @@ standard:
         caps: docker-daemon
 
 Implemented as `ModuleDoc._parse_requires` (a new `requires` field
-alongside the existing `dependencies`, which stays package-level). A
-bare, unlabeled line — `**requires=`'s only form before this schema
-existed — is treated as a legacy `exec` entry, so `phases.py`'s own
-long-standing docstring example (`csmake-providers` / `csmake-swak` /
-`n81`, one name per line) keeps parsing unchanged.
+alongside the existing `dependencies`, which stays package-level).
+
+**Real bug found while dogfooding this against an actual existing
+module**: the first draft treated any bare, unlabeled line under
+`Requires:` as a legacy `exec` entry, matching `**requires=`'s one prior
+convention (`phases.py`'s own docstring example: `csmake-providers` /
+`csmake-swak` / `n81`, one name per line). But `TestPython.py`'s own
+pre-existing `Requires:` field is free-form prose written before this
+schema existed (`"coverage (>= 4.0 preferred) (apt-get install
+python-coverage or pip install coverage)"`) — running the preflight
+check against it tokenized the prose into nonsense exec names (`(>=`,
+`4.0`, `preferred)`, ...) and warned about all of them being missing.
+Fixed by making the bare-line fallback opt-in
+(`legacy_bare_as_exec=True`), used only by `phases.py._process_requires`
+for `**requires=` specifically — the one context whose prior convention
+genuinely was a flat name list. Module docstrings stay strict: only
+`exec:`/`caps:` sub-headers are structured; anything else is silently
+ignored, per ModuleDoc's own stated design goal of never guessing
+structure out of free-form prose.
 
 `CsmakeModulePackager` extracts this via `ModuleDoc.extract_class_docstring`
 (source-only, no import needed) at package time into per-module
@@ -405,9 +420,52 @@ not built — `CsmakeModulePackager` doesn't publish-lint anything yet.
   the tractable, low-risk increment; the other two need a command's full
   step tree resolved up front (including nested multicommand references),
   which is a larger, separate piece of work.
-- Machine-readable output (`--prereqs-format=json`) and the fully
-  hermetic caps→pinned-container path are still *(later)*, alongside the
-  unbuilt upfront scopes above.
+- Machine-readable output (`--prereqs-format=json`) is still *(later)*.
+  The hermetic caps→pinned-container path is implemented, scoped down —
+  see below.
+
+## Hermetic execution path *(implemented, scoped down)*
+
+`DebianPackage` stays in core (decided when this phase started — moving
+it would break the "a bare checkout builds the .deb" guarantee `BUILDING`
+documents; the resulting core/packaging asymmetry is accepted as a known
+inconsistency).
+
+Implemented as `csmake-packaging/CsmakeModules/HermeticShell.py`: a
+`Shell` subclass (following `csmake-swak`'s `ChrootShell` — same
+subclass-and-override-`_executeShell`/`default` pattern) that runs its
+command inside a container image looked up from a `HERMETIC_CAP_IMAGES`
+table (`caps` name → image; an explicit `image` option overrides the
+lookup), via `csmake-docker-runtime`'s `DockerRuntime.execute()`.
+Hermetic means hermetic: `_getStartingEnvironment` is overridden to
+return `{}` rather than the host's `os.environ`, so only variables
+explicitly supplied via `env=` ShellEnv references cross into the
+container — verified directly (a test sets a host-only marker env var
+and confirms it's absent from `env` output inside the container).
+
+**Minimal first cut, not automatic orchestration**, as scoped: a build
+opts a step into hermetic execution explicitly by choosing
+`HermeticShell` instead of `Shell` for a step whose capability isn't
+satisfiable on the host; there is no automatic host-vs-container
+fallback wired to the Phase 4 preflight check's findings (a section
+declaring a `caps:` requirement is only reported as unavailable, never
+auto-redirected into a container — csmake knows and tells, never acts).
+
+Verified end to end against a real Docker daemon (not a mock) — pulling
+`alpine:latest`, running a command through it, and confirming both the
+image and the environment isolation. Establishes `csmake-packaging`'s
+first test infrastructure (`tests/`, wired into its own `csmakefile` as
+`command@test`, matching core's conventions) — tests there previously
+had none. **Real wiring bug found**: `TestPython`'s `source-dir` and
+`test-dir` are `unittest.TestLoader.discover(start_dir, pattern,
+top_level_dir)`'s `start_dir`/`top_level_dir` under the hood, and
+Python's stdlib loader asserts `top_level_dir` is an ancestor of
+`start_dir` — sibling directories (`tests/` and `CsmakeModules/`, as
+first wired) raise `AssertionError: Path must be within the project`.
+Core's own test sections all happen to satisfy this already
+(`source-dir=CsmakeCore/` is an ancestor of every `test-dir` under it),
+which is why the constraint had never surfaced before. Fixed by pointing
+`source-dir` at the repo root (`.`) instead.
 
 ## Preinstall / fetch *(settled)*
 
@@ -419,25 +477,40 @@ it (`Uses-Sections:` in the docstring, machine-checkable) or are caught
 by a recorded run. Preinstall warms the cache and emits the prereqs
 report; determinism still comes from the generation, not from the walk.
 
-## Phasing (suggested order)
+## Phasing (implemented, in order)
 
-1. Resolver + layered source config in core; `--modules-path` becomes a
-   layer; static `index.json` for dumb-server registries.
-2. Promote CsmakeModulePackager + wheel primitive + index-entry emitter
-   to core; registry CODEOWNERS/CI automerge flow.
-3. `[~~packages~~]` + `**uses` + versioned-name loader projection.
-4. Docstring `Requires:` + preflight (`_process_requires` body) +
-   translation table.
-5. Cache generations (remaster/promote/rollback tooling); walled-garden
-   package (mirror-sync, frozen mode).
-6. DebianPackage migration out of core; hermetic container path.
+1. ✅ Resolver + layered source config in core; static `index.json` for
+   dumb-server registries. (`--modules-path` itself was not refactored
+   into a layer — it remains the separate, versionless "layer zero.")
+2. ✅ Promote CsmakeModulePackager + wheel primitive to core; registry
+   CODEOWNERS/CI validation (automerge configuration itself — the repo
+   settings, not the validation gate it depends on — is still a
+   follow-up).
+3. ✅ `[~~packages~~]` + `**uses` + versioned-name loader projection.
+4. ✅ Docstring `Requires:` + preflight, at the "owning section, at
+   dispatch" scope (the full-closure and whole-command-upfront scopes
+   from the original proposal are not built — see that section above).
+5. ✅ Cache generations (remaster/promote/rollback) + walled-garden
+   mirror-sync + `--frozen` mode.
+6. ✅ Hermetic execution path, scoped down (`HermeticShell`, opt-in, no
+   auto-orchestration). DebianPackage migration was decided against —
+   stays in core.
 
 ## Open questions
 
-- Final blessing of the `[~~packages~~]` / `**uses` spellings.
-- ModuleDoc: add `Requires` to the field aliases (distinct from
-  `Dependencies`, which stays package-level).
 - Index signature reservation (room for detached signatures per entry so
   mirrors/gardens can re-sign later without a format break).
 - Scoped names (`org/package`) if the curated flat namespace ever
   becomes a growth bottleneck.
+- Follow-ups noted inline above: `[~~packages~~]` integration with
+  `SourceLayers`' own layering; the fetch-time and build-start preflight
+  scopes; `--prereqs-format=json`; automerge repo configuration for the
+  registry; extending the shared resolver to non-module ecosystems
+  (GHActions' `uses:` fetches, WgetPicker).
+- A real, latent (pre-existing, not introduced here) bug was found and
+  filed separately, not fixed as part of this work: `CliDriver` reads
+  `$PWD` instead of `os.getcwd()` for its notion of the working
+  directory, which can silently corrupt module discovery under
+  `subprocess.run(cwd=...)` when the stale `$PWD` happens to match
+  `sys.path[0]`. Several tests in this session work around it explicitly
+  (search for "stale (\$PWD\|PWD)" across `CsmakeCore/tests/`).

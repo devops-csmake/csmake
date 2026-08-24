@@ -330,14 +330,23 @@ def _parse_examples(value):
     return [b.strip("\n") for b in blocks if b.strip()]
 
 
-def _parse_requires(value):
+def _parse_requires(value, legacy_bare_as_exec=False):
     """Parse a Requires field into ``{"exec": [...], "caps": [...]}``.
 
     Recognizes ``exec:`` / ``caps:`` sub-lines (comma- or whitespace-
-    separated names). A bare, unlabeled line -- the only form
-    ``**requires=`` in ``~~phases~~`` supported before this schema existed
-    -- is treated as a legacy ``exec`` entry, so existing docstrings and
-    ``**requires=`` blocks keep parsing unchanged.
+    separated names). By default, any other line is simply ignored --
+    lenient, per this module's own design goals: a module docstring's
+    ``Requires:`` field may already contain free-form prose written
+    before this schema existed (e.g. TestPython's own "coverage (>= 4.0
+    preferred) (apt-get install python-coverage or pip install
+    coverage)"), and guessing structure out of that would misparse
+    plain English as a list of executable names.
+
+    ``legacy_bare_as_exec=True`` restores the older behavior of treating
+    an unlabeled line as a flat list of ``exec`` names -- only correct
+    for ``**requires=`` in ``~~phases~~``, whose one prior established
+    convention (its own docstring example: one name per line) genuinely
+    was that shape.  See ``phases.py._process_requires``.
     """
     result = {"exec": [], "caps": []}
     value = value.strip()
@@ -351,9 +360,11 @@ def _parse_requires(value):
         if m:
             key = m.group(1).lower()
             names = re.split(r'[,\s]+', m.group(2).strip())
-        else:
+        elif legacy_bare_as_exec:
             key = "exec"
             names = re.split(r'[,\s]+', line)
+        else:
+            continue
         result[key].extend(n for n in names if n)
     return result
 

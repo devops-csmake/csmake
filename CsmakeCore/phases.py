@@ -128,7 +128,7 @@ Example:
         blocks keep parsing unchanged. Never installs anything -- see
         CliDriver's preflight check, which reports and never acts.
         """
-        return ModuleDoc._parse_requires(value)
+        return ModuleDoc._parse_requires(value, legacy_bare_as_exec=True)
 
     def _processPhases(self):
         for key, value in self.options.items():
