@@ -275,6 +275,70 @@ class TestStaticIndexInstall(ModuleRegistryTestBase):
             self.assertIn('from-a', f.read())
 
 
+class TestFrozenMode(ModuleRegistryTestBase):
+    def test_frozen_install_fails_closed_when_not_cached(self):
+        url = self._make_static_source('source', {
+            'pkg-x': {'version': '2.0.0', 'provides_modules': ['ModX'],
+                      'files': {'CsmakeModules/ModX.py': b'# x'}},
+        })
+        self._configure_sources([
+            {'ecosystem': 'csmake-module', 'url': url, 'type': 'static-index'},
+        ])
+
+        # Warm the index cache (frozen mode won't refresh it, but it
+        # needs to exist already -- mirrors a build that ran once
+        # unfrozen, then later runs frozen against the same cache).
+        warm = ModuleRegistry(cwd=self.cwd)
+        warm._get_combined_index()
+
+        frozen = ModuleRegistry(cwd=self.cwd, frozen=True)
+        dest = frozen.install('pkg-x')
+        self.assertIsNone(dest)
+
+    def test_frozen_install_succeeds_when_already_cached(self):
+        url = self._make_static_source('source', {
+            'pkg-x': {'version': '2.0.0', 'provides_modules': ['ModX'],
+                      'files': {'CsmakeModules/ModX.py': b'# x'}},
+        })
+        self._configure_sources([
+            {'ecosystem': 'csmake-module', 'url': url, 'type': 'static-index'},
+        ])
+
+        # Install once, unfrozen, to populate the cache.
+        warm = ModuleRegistry(cwd=self.cwd)
+        first_dest = warm.install('pkg-x')
+        self.assertIsNotNone(first_dest)
+
+        frozen = ModuleRegistry(cwd=self.cwd, frozen=True)
+        dest = frozen.install('pkg-x')
+        self.assertEqual(dest, first_dest)
+
+    def test_frozen_never_touches_network(self):
+        # Point at a source that would raise if actually contacted --
+        # frozen mode must never even try, once the index is warmed.
+        url = self._make_static_source('source', {
+            'pkg-x': {'version': '2.0.0', 'provides_modules': ['ModX'],
+                      'files': {'CsmakeModules/ModX.py': b'# x'}},
+        })
+        self._configure_sources([
+            {'ecosystem': 'csmake-module', 'url': url, 'type': 'static-index'},
+        ])
+        warm = ModuleRegistry(cwd=self.cwd)
+        warm._get_combined_index()
+
+        def _explode(*a, **k):
+            raise AssertionError("frozen mode must never touch the network")
+
+        frozen = ModuleRegistry(cwd=self.cwd, frozen=True)
+        orig = ModuleRegistryModule._urllib_request.urlopen
+        ModuleRegistryModule._urllib_request.urlopen = _explode
+        try:
+            combined = frozen._get_combined_index()
+            self.assertIn('pkg-x', combined['packages'])
+        finally:
+            ModuleRegistryModule._urllib_request.urlopen = orig
+
+
 class TestTerminalGarden(ModuleRegistryTestBase):
     def test_terminal_source_hides_public_default(self):
         garden_url = self._make_static_source('garden', {

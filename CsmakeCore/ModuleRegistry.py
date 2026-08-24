@@ -143,9 +143,16 @@ class ModuleRegistry(object):
             # add path to module search paths and retry
     """
 
-    def __init__(self, settings=None, cwd=None):
+    def __init__(self, settings=None, cwd=None, frozen=None):
         self.settings = settings or {}
         self._sources = SourceLayers(cwd=cwd).effective_sources(_ECOSYSTEM)
+        if frozen is not None:
+            self.frozen = bool(frozen)
+        else:
+            try:
+                self.frozen = bool(self.settings['frozen'])
+            except Exception:
+                self.frozen = False
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -264,6 +271,13 @@ class ModuleRegistry(object):
             self._install_dependencies(ver_data, combined)
             return dest
 
+        if self.frozen:
+            _log.error(
+                "ModuleRegistry: --frozen: '%s@%s' is not in the local "
+                "cache and frozen mode forbids fetching it",
+                package_name, version)
+            return None
+
         url = ver_data.get('url')
         if not url:
             _log.warning(
@@ -304,6 +318,11 @@ class ModuleRegistry(object):
         The combined index is rebuilt from the cached per-package files
         whenever the combined-index.json is older than ``_COMBINED_INDEX_TTL``
         *and* the registry reports any changed files (via ETag checks).
+
+        In frozen mode (``self.frozen``), the refresh step -- the only
+        thing here that touches the network -- is skipped entirely; the
+        combined index is built from whatever per-source index files are
+        already cached on disk, however stale.
         """
         combined_path = os.path.join(_REGISTRY_CACHE, 'combined-index.json')
         mtime_path    = combined_path + '.mtime'
@@ -313,11 +332,14 @@ class ModuleRegistry(object):
             try:
                 with open(mtime_path) as f:
                     last_refresh = float(f.read().strip())
-                if time.time() - last_refresh < _COMBINED_INDEX_TTL:
+                if self.frozen or time.time() - last_refresh < _COMBINED_INDEX_TTL:
                     with open(combined_path) as f:
                         return json.load(f)
             except Exception:
                 pass
+
+        if self.frozen:
+            return self._build_combined_index()
 
         # Refresh per-package files from registry (ETag-gated network calls).
         self._refresh_registry_cache()

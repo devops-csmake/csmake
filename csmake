@@ -105,6 +105,37 @@ CSMAKE_SETTINGS={
            only a warning; --strict-prereqs makes it a hard failure.""",
         True,
         "Fail on missing/unverifiable section requirements"],
+    "generation" : [
+        None,
+        """Selects a cache generation to resolve package pins from.
+
+           A generation is a named, immutable snapshot of package
+           versions (~/.csmake/generations/<name>.json), created with
+           the GenerationRemaster module and activated with
+           GenerationPromote. By default the generation named by
+           ~/.csmake/generations/current is used, if any; this option
+           overrides that for a single run (e.g. to test a freshly
+           remastered generation before promoting it).
+
+           A generation's pins apply only to packages not already
+           pinned by [~~packages~~] or a section's own **uses -- same
+           priority as the ambient [~~packages~~] pin, one layer lower.""",
+        False,
+        "Cache generation to resolve package pins from"],
+    "frozen" : [
+        False,
+        """Fail closed instead of reaching the network for module
+           resolution: a package not already present in the local
+           module cache (~/.csmake/modules/) is a hard build failure
+           naming exactly what's missing, rather than a live fetch.
+
+           For reproducible builds against a walled garden or a
+           promoted generation -- everything the build needs should
+           already be in the cache (see MirrorSync / GenerationRemaster);
+           --frozen makes it a build failure, not a surprise, when
+           something isn't.""",
+        True,
+        "Fail closed instead of fetching over the network"],
     "list-commands" : [
         False,
         """Displays all of the available commands

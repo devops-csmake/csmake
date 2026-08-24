@@ -286,6 +286,120 @@ class TestPinTriggersFreshInstall(unittest.TestCase):
             shutil.rmtree(scratch, ignore_errors=True)
 
 
+class TestGenerationPin(unittest.TestCase):
+    """A --generation selection feeds Generations' pins into the SAME
+    ambient-pin mechanism [~~packages~~] uses (Phase 5 building on
+    Phase 3/1): an unpinned section should resolve to whatever the
+    selected generation pins, not the registry's own "latest" -- the
+    registry index and Generations.remaster() both use fakepkg2's
+    'latest'=3.0.0, but the generation itself pins 2.0.0.
+    """
+
+    def _make_fixture_registry(self, base):
+        os.makedirs(os.path.join(base, 'index'))
+        os.makedirs(os.path.join(base, 'artifacts'))
+        with open(os.path.join(base, 'index.json'), 'w') as f:
+            json.dump(['fakepkg2'], f)
+
+        widget2_source = textwrap.dedent('''\
+            from CsmakeCore.CsmakeModule import CsmakeModule
+            import json, os
+
+            class Widget2(CsmakeModule):
+                def build(self, options):
+                    os.makedirs(os.path.dirname(options['result']), exist_ok=True)
+                    with open(options['result'], 'w') as f:
+                        json.dump({'widget_version': %(version)r}, f)
+                    self.log.passed()
+                    return True
+            ''')
+        import hashlib
+        import zipfile
+        versions_block = {}
+        for version in ('2.0.0', '3.0.0'):
+            csm_path = os.path.join(base, 'artifacts', 'fakepkg2-%s.csm' % version)
+            manifest = {'name': 'fakepkg2', 'version': version,
+                        'dependencies': {}, 'files': {}}
+            with zipfile.ZipFile(csm_path, 'w') as zf:
+                zf.writestr('csmake-manifest.json', json.dumps(manifest))
+                zf.writestr('CsmakeModules/Widget2.py',
+                            widget2_source % {'version': version})
+            with open(csm_path, 'rb') as f:
+                sha256 = hashlib.sha256(f.read()).hexdigest()
+            versions_block[version] = {
+                'url': 'file://' + csm_path, 'sha256': sha256, 'dependencies': {}}
+
+        with open(os.path.join(base, 'index', 'fakepkg2.json'), 'w') as f:
+            json.dump({
+                'name': 'fakepkg2', 'provides_modules': ['Widget2'],
+                'versions': versions_block, 'latest': '3.0.0',
+            }, f)
+
+    def test_unpinned_section_resolves_via_selected_generation(self):
+        scratch = tempfile.mkdtemp()
+        try:
+            home = os.path.join(scratch, 'home')
+            os.makedirs(home)
+            registry_dir = os.path.join(scratch, 'registry')
+            os.makedirs(registry_dir)
+            self._make_fixture_registry(registry_dir)
+            os.makedirs(os.path.join(home, '.csmake'))
+            with open(os.path.join(home, '.csmake', 'config.json'), 'w') as f:
+                json.dump({'sources': [{
+                    'ecosystem': 'csmake-module',
+                    'url': 'file://' + registry_dir,
+                    'type': 'static-index',
+                }]}, f)
+
+            sys.path.insert(0, REPO_ROOT)
+            from CsmakeCore.Generations import Generations
+            generations_root = os.path.join(home, '.csmake', 'generations')
+            gens = Generations(root=generations_root)
+            gens.remaster(
+                'gen-pins-old', {'packages': {
+                    'fakepkg2': {'latest': '2.0.0'}}},
+                packages=['fakepkg2'])
+            gens.promote('gen-pins-old')
+
+            workdir = os.path.join(scratch, 'work')
+            os.makedirs(workdir)
+            with open(os.path.join(workdir, 'csmakefile'), 'w') as f:
+                f.write(textwrap.dedent("""\
+                    [~~phases~~]
+                    build=run widget
+                    **default=build
+
+                    [Widget2@unpinned]
+                    result=out/unpinned.json
+
+                    [command@run]
+                    description=unpinned only
+                    00=unpinned
+                    """))
+
+            env = dict(os.environ)
+            env.pop('PYTHONPATH', None)
+            env['HOME'] = home
+            env['PWD'] = workdir
+            completed = subprocess.run(
+                [sys.executable, os.path.join(REPO_ROOT, 'csmake'),
+                 '--command=run', 'build'],
+                cwd=workdir, env=env,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
+            self.assertEqual(
+                completed.returncode, 0,
+                "csmake failed:\n%s" % completed.stderr.decode('utf-8', 'replace'))
+
+            with open(os.path.join(workdir, 'out', 'unpinned.json')) as f:
+                result = json.load(f)
+            # The generation pins 2.0.0; the registry's own 'latest' is
+            # 3.0.0. Getting 2.0.0 proves the generation's pin, not the
+            # registry's latest, drove resolution.
+            self.assertEqual(result['widget_version'], '2.0.0')
+        finally:
+            shutil.rmtree(scratch, ignore_errors=True)
+
+
 class TestNoPinsRegression(unittest.TestCase):
     """With zero pins anywhere, behavior must be byte-identical to today.
 

@@ -1393,6 +1393,27 @@ class CliDriver(object):
         else:
             self.phasesDecl = phases.phases(None, self.log)
 
+        # Load the active (or explicitly --generation-selected) cache
+        # generation's pins first -- lowest priority: [~~packages~~]
+        # below, and any section's own **uses, both win over these.  A
+        # generation is just another pin source (see Generations.py /
+        # docs/MODULE_ECOSYSTEM_DESIGN.md).
+        try:
+            from .Generations import Generations
+            generations = Generations()
+            generationName = self.settings['generation']
+            if generationName is None:
+                generationName = generations.current_name()
+            if generationName is not None:
+                manifest = generations.get(generationName)
+                if manifest is not None:
+                    self._packagePins.update(manifest.get('packages', {}))
+                else:
+                    self.log.warning(
+                        "Generation '%s' not found", generationName)
+        except Exception as _e:
+            self.log.debug("Generation pin loading skipped: %s", _e)
+
         # Load ambient package pins: [~~packages~~] pkgname=version, the
         # spec-level default consulted when a section has no **uses of its
         # own.  See docs/MODULE_ECOSYSTEM_DESIGN.md.

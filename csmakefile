@@ -381,6 +381,18 @@ test=testPreflightCheck.py
 source-dir=CsmakeCore/
 resource-dir=%(WORKING)s/CsmakeCore/tests
 
+[TestPython@test-Generations]
+test-dir=CsmakeCore/tests/
+test=testGenerations.py
+source-dir=CsmakeCore/
+resource-dir=%(WORKING)s/CsmakeCore/tests
+
+[TestPython@test-MirrorSync]
+test-dir=CsmakeCore/tests/
+test=testMirrorSync.py
+source-dir=CsmakeCore/
+resource-dir=%(WORKING)s/CsmakeCore/tests
+
 [command@test]
 description=Run testing
 000=test-FileInstance
@@ -397,6 +409,8 @@ description=Run testing
 011=test-Phases
 012=test-SystemPackageHints
 013=test-PreflightCheck
+014=test-Generations
+015=test-MirrorSync
 
 [command@test-filetracker]
 description=Run all file tracker testing

@@ -79,7 +79,7 @@ configured act of trust.
 `+local` and `--modules-path` are layer zero: versionless local path
 sources that win outright (dev checkouts beat everything, as today).
 
-## Cache generations *(settled)*
+## Cache generations *(settled — implemented)*
 
 Cache-first resolution: if the artifact is in the cache, the cache is
 authoritative. The cache changes only at explicit **remaster** time:
@@ -94,6 +94,55 @@ config resolves, the generation manifest carries the integrity hashes
 (the go.sum analogue). A build outside any curated generation
 (no-config mode) resolves live and floats; that is by design and should
 be documented as such.
+
+Implemented as `CsmakeCore/Generations.py`: `~/.csmake/generations/<name>.json`
+(`{"packages": {pkg: version}, "parent": <previous-name-or-null>}`) plus a
+`current` pointer file. `remaster(name, combined_index, packages=None)`
+re-resolves each package's `latest` against the registry's combined index
+(defaulting `packages` to the current generation's own set, so
+`remaster('gen-N+1')` with no args is exactly "copy-forward plus
+re-resolve"); `promote(name)` flips `current`; `rollback()` reverts to the
+current generation's own `parent`. Generations are immutable once
+created — `remaster` refuses to overwrite an existing name, matching the
+registry's own "published versions are immutable" invariant.
+
+**A generation is just another pin source**, confirming the simplification
+found while designing this phase: it plugs into the exact resolution
+machinery `[~~packages~~]` already uses (Phase 3), one priority tier
+lower — loaded first, then `[~~packages~~]` entries overwrite any
+matching key. `--generation=<name>` selects one for a single run
+(defaulting to whatever `current` points to), e.g. to test a freshly
+remastered generation before promoting it. No new resolution code was
+needed for this — verified end to end with an unpinned section correctly
+resolving to a generation's pinned (non-"latest") version.
+
+**Walled garden**: `CsmakeModules/MirrorSync.py` downloads every package a
+generation pins and re-hosts it as a `static-index` source directory
+(Phase 1's format) — `index.json`, `index/<pkg>.json`, `artifacts/*.csm` —
+so the freshly mirrored garden is immediately usable by pointing a
+`sources.json` entry at it. Its core logic (`mirror_sync`) is a plain,
+directly-testable function using only `urllib`/`hashlib`, doing its own
+sha256 verification against the index's recorded hash — the same
+two-step-verification philosophy as `ModuleRegistry`, not a dependency on
+it (it needs the raw `.csm` bytes preserved for re-hosting, which
+`ModuleRegistry.install()` doesn't keep around since it extracts
+in place). Re-syncing is idempotent: an already-mirrored, hash-matching
+artifact is never re-downloaded, so adding a newly promoted generation to
+an existing garden only fetches what changed. An optional `base-url`
+option points mirrored entries at wherever the directory will actually be
+served from; without one, entries point at the local files directly
+(`file://...`), which is what makes local verification possible before
+any deployment step exists.
+
+**Frozen mode**: `--frozen` (`ModuleRegistry(frozen=True)`) skips the
+registry-cache refresh entirely (network-touching) and makes `install()`
+fail closed — return `None` with a clear error — for anything not
+already present in the local cache, rather than attempting a download.
+Verified two ways: a dedicated test patches `urlopen` to explode if
+called, and a round-trip test (mirror a generation into a fresh
+directory, point a *only* source at it, resolve once unfrozen to warm
+the cache, then resolve again frozen) confirms a build can resolve
+entirely from a mirrored garden with zero network access.
 
 ## Package format: .csm as wheel *(settled — implemented)*
 
