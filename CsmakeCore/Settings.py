@@ -97,20 +97,27 @@ class Settings:
         return setting.isFlag
 
     def appendSettings(self, key, newSettings):
-        """This will add settings for your CLI to use:
-           newSettings will be in a
-           dict(-name-, list(-default-, -description-, -flag-))
-    
-           form
+        """Add settings for CLI use without disturbing existing settings.
+           newSettings is a dict of the form:
+               { name: [default, description, isFlag] }
+           or with an optional fourth element for the short description:
+               { name: [default, description, isFlag, short] }
 
            Where:
-               name is the option from the command line, file, or json input
-               default is the default value
-               description is the description of the setting
-               flag is a True/False boolean
-                   True means that it doesn't expect a parameter on the CLI
-                   False means a parameter is expected
+               name        - option name from the command line, file, or JSON
+               default     - default value
+               description - help text
+               isFlag      - True if the option takes no value (boolean flag)
+                             False if the option expects a parameter
         """
         if len(key) == 0:
-            self.initSettings(self.allsettings, newSettings)
+            # Merge into root settings — existing keys are preserved.
+            for k, v in newSettings.items():
+                if k not in self.allsettings.value:
+                    if len(v) == 3:
+                        self.allsettings.value[k] = Setting(
+                            k, v[0], v[1], v[2])
+                    else:
+                        self.allsettings.value[k] = Setting(
+                            k, v[0], v[1], v[2], v[3])
 

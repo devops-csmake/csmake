@@ -55,6 +55,7 @@ import json
 import logging
 import configparser
 import subprocess
+import shutil
 import textwrap
 import threading
 import uuid
@@ -70,6 +71,8 @@ from .AspectResult import AspectResult
 from .AspectFlowControl import AspectFlowControl
 from .ParallelLaunchStack import ParallelLaunchStack
 from .MetadataManager import DefaultMetadataModule
+from . import ModuleDoc
+from . import SystemPackageHints
 from .OutputTee import OutputTee
 from . import phases
 
@@ -91,12 +94,61 @@ CSMAKE_LIBRARY_VERSION = "3.0.0"
 
 class CliDriver(object):
 
+    # Class-level extension registry.  Extensions self-register at import
+    # time by calling CliDriver.register_extension(MyExtensionClass).
+    _extensions = []
+
+    @classmethod
+    def register_extension(cls, ext_class):
+        """Register a csmake extension class.
+        Called by extension modules at module load time (not instance time).
+        Each extension class may provide:
+            BUILDSPEC_FLAG  - str CLI flag name (without '--') that, when
+                              present, overrides the normal --makefile loading.
+            get_settings()  - classmethod returning a settings dict in the
+                              same form as the CliDriver settings seed.
+            load_buildspec(driver) - classmethod that reads the extension's
+                              buildspec source and returns a sections dict
+                              suitable for RawConfigParser.read_dict(), or
+                              None if the extension does not apply.
+        """
+        if ext_class not in cls._extensions:
+            cls._extensions.append(ext_class)
+
+    # Class-level capability-checker registry for the system-requirements
+    # preflight (see _preflightCheck / docs/MODULE_ECOSYSTEM_DESIGN.md).
+    # A package can register a callable for a 'caps:' name it ships a
+    # checker for; an unregistered cap is reported as declared-but-
+    # unverifiable rather than failing by default.
+    _prereqCheckers = {}
+
+    @classmethod
+    def register_prereq_checker(cls, capname, checker):
+        """Register *checker* (a zero-arg callable returning bool) for the
+        capability name *capname*, as used in a module's Requires: caps:
+        field.  Called by a module at import time, mirroring
+        register_extension."""
+        cls._prereqCheckers[capname] = checker
+
     def __init__(self, settings={}, name='<name>', version='<version>'):
         self.currentPhase = 'default'
         self.settings = Settings(settings)
         self.scriptName = name
         self.scriptVersion = version
         self.modulePathConstruct = None
+        self._remoteModulesAttempted = set()
+        # Package pins ([~~packages~~], **uses) -- see docs/MODULE_ECOSYSTEM_DESIGN.md.
+        # self._packagePins: ambient {package: version} from [~~packages~~].
+        # self._pinContext: stack of (package, version) -- the top entry is
+        #   the pin scope currently being loaded, consulted by load_module()
+        #   so a pinned package's own internal 'from CsmakeModules.X import X'
+        #   resolves within that SAME pinned version rather than the bare
+        #   default. Maintained only under the imp import lock, so a single
+        #   list is safe: csmake's custom loader serializes all module loads
+        #   through that lock, including any nested loads a module's own
+        #   top-level code triggers while it is being loaded.
+        self._packagePins = {}
+        self._pinContext = []
         #This will be replaced with a "Results" type object
         logging.basicConfig()
         self.log = logging.getLogger("%s.%s" % (
@@ -222,20 +274,29 @@ class CliDriver(object):
                 self.log.error("import %s: Subpackages are not allowed for csmake modules", fullname)
                 raise ImportError(fullname)
 
-            imp.acquire_lock()
-            try:
-                if 'CsmakeModules' in sys.modules:
-                    csmakeModulesModule = sys.modules['CsmakeModules']
-                    if nameparts[1] in csmakeModulesModule.__dict__:
-                        self.log.devdebug("Module already loaded")
-                        self.log.devdebug("Module: %s", csmakeModulesModule.__dict__[nameparts[1]])
-                        self.log.devdebug("All Modules: %s", str(sys.modules))
-                        return csmakeModulesModule.__dict__[nameparts[1]]
-            finally:
-                imp.release_lock()
+            # While loading a pinned package's own module (a **uses'd
+            # section, or a sibling import triggered from one), skip the
+            # bare-slot cache check below: the bare slot may hold a
+            # DIFFERENT version, and returning it here would defeat the
+            # whole point of the pin.  _loadModules(pin=...) does its own
+            # (separately-keyed) cache check for the pinned version.
+            currentPin = self._pinContext[-1] if self._pinContext else None
+
+            if currentPin is None:
+                imp.acquire_lock()
+                try:
+                    if 'CsmakeModules' in sys.modules:
+                        csmakeModulesModule = sys.modules['CsmakeModules']
+                        if nameparts[1] in csmakeModulesModule.__dict__:
+                            self.log.devdebug("Module already loaded")
+                            self.log.devdebug("Module: %s", csmakeModulesModule.__dict__[nameparts[1]])
+                            self.log.devdebug("All Modules: %s", str(sys.modules))
+                            return csmakeModulesModule.__dict__[nameparts[1]]
+                finally:
+                    imp.release_lock()
 
             self.log.devdebug("Loading module for the first time")
-            modules, warnings = self._loadModules(nameparts[1])
+            modules, warnings = self._loadModules(nameparts[1], pin=currentPin)
             if len(warnings) != 0:
                 self.log.warning("import %s:  There were some problems")
                 for warning in warnings:
@@ -369,6 +430,17 @@ class CliDriver(object):
         modules.append(('(built-in)', '~~phases~~', phases, phases.phases))
 
     def dumpTypes(self, singleType=None):
+        # Structured output (json/yaml) must be the only thing on stdout, so
+        # silence module-load chatter/warnings before they can interleave with
+        # the emitted document.  Guarded so drivers that do not define the
+        # setting keep the historical text behavior.
+        docFormat = 'text'
+        try:
+            docFormat = self.settings['list-type-format'] or 'text'
+        except Exception:
+            docFormat = 'text'
+        if docFormat != 'text':
+            self.log.forceQuiet()
         self._parseModulePaths()
         modules, warnings = self._loadModules()
         outputBlobs = {}
@@ -387,9 +459,11 @@ class CliDriver(object):
                 continue
 
             result = actualModule
+            originalDoc = None
             docString = "<<Module not documented>>"
             try:
-                docString = result.__doc__
+                originalDoc = result.__doc__
+                docString = originalDoc
                 if docString is not None and '\n' in docString:
                     doclines = docString.split('\n')
                     docString = "%s\n%s" % (
@@ -399,7 +473,8 @@ class CliDriver(object):
                 pass
             outputBlobs[name] = {
                 "path" : path,
-                "doc" : docString
+                "doc" : docString,
+                "rawdoc" : originalDoc
             }
 
         blobKeys = list(outputBlobs.keys())
@@ -412,6 +487,43 @@ class CliDriver(object):
                 self.chat("Error: Module (Section Type) not defined: %s" % singleType)
                 self.log.forceQuiet()
                 sys.exit(255)
+
+        # Structured output (--list-type-format=json|yaml): emit the module
+        # documentation straight from the modules, byte-clean on stdout, and
+        # skip the human-readable text rendering entirely.
+        if docFormat != 'text':
+            structured = [
+                ModuleDoc.parse_module_doc(
+                    key,
+                    outputBlobs[key].get('rawdoc'),
+                    path=outputBlobs[key]['path'])
+                for key in blobKeys ]
+            # Completeness: recover docs for any documented module that did not
+            # import (e.g. a sibling library on --modules-path whose runtime
+            # dependencies aren't installed in this checkout).  The docstring is
+            # all the doc engine needs, so read it from source via ast.  Only
+            # for the full catalog (singleType is None).
+            if singleType is None:
+                seen = set(outputBlobs.keys())
+                for pathtype, modPath in getattr(
+                        self, 'modulePathConstruct', []):
+                    packageDir = os.path.join(modPath, 'CsmakeModules')
+                    for parsed in ModuleDoc.discover_source_docs(
+                            packageDir, repo=modPath, skip=seen):
+                        structured.append(parsed)
+                        seen.add(parsed['name'])
+            try:
+                rendered = ModuleDoc.render(structured, docFormat)
+            except ValueError:
+                self.chat(
+                    "Error: Unknown --list-type-format: %s "
+                    "(expected text, json, or yaml)" % docFormat)
+                self.log.forceQuiet()
+                sys.exit(255)
+            sys.stdout.write(rendered + "\n")
+            sys.stdout.flush()
+            return
+
         for key in blobKeys:
             self.chat("_"*51)
             self.chat("")
@@ -634,6 +746,28 @@ class CliDriver(object):
             if self.modulePaths != ['+local', '+path']:
                 self.log.info("Module paths is modified: %s", self.modulePaths)
 
+    def _parsePin(self, usesSpec):
+        """Parse a **uses value ('pkgname@version') into (pkgname, version).
+
+        Returns None (and logs a warning) for anything malformed -- a
+        section with a broken pin falls back to normal unpinned
+        resolution rather than failing the whole build.
+        """
+        if not usesSpec or '@' not in usesSpec:
+            self.log.warning(
+                "**uses '%s' is not in 'package@version' form; ignoring",
+                usesSpec)
+            return None
+        pkgname, _, version = usesSpec.strip().partition('@')
+        pkgname = pkgname.strip()
+        version = version.strip()
+        if not pkgname or not version:
+            self.log.warning(
+                "**uses '%s' is not in 'package@version' form; ignoring",
+                usesSpec)
+            return None
+        return (pkgname, version)
+
     def _afterLoadSettings(self):
         """This is called after the settings are loaded and ready for consumption"""
         pass
@@ -783,7 +917,13 @@ class CliDriver(object):
             self.log.devdebug("overrideOptions: %s", str(overrideOptions))
             self.log.devdebug("Looking up module: %s", sectionType)
 
-            execinstance = self.getSectionTypeInstance(sectionType, resultObject)
+            pin = None
+            usesSpec = stepdict.get('**uses')
+            if usesSpec:
+                pin = self._parsePin(usesSpec)
+
+            execinstance = self.getSectionTypeInstance(
+                sectionType, resultObject, pin=pin)
             #TODO: Give section module instance its id - short and full
             self.log.devdebug("Lookup result is: %s", execinstance)
             if execinstance is None:
@@ -985,17 +1125,38 @@ class CliDriver(object):
         if not os.path.isfile(spec):
             self.log.error("File missing: build specification '%s' could not be found.", spec)
             return False
-        else:
-            self.buildspecLock.acquire()
-            try:
-                self.buildspec.read([spec])
-                self.outBuildspec.read([spec])
-            finally:
-                self.buildspecLock.release()
-            return True
+        self.buildspecLock.acquire()
+        try:
+            self.buildspec.read([spec])
+            self.outBuildspec.read([spec])
+        finally:
+            self.buildspecLock.release()
+        return True
+
+    def injectBuildspec(self, sections):
+        """Inject a pre-parsed sections dict into the active buildspec.
+        Used by extensions that supply their own buildspec source."""
+        self.buildspecLock.acquire()
+        try:
+            self.buildspec.read_dict(sections)
+            self.outBuildspec.read_dict(sections)
+        finally:
+            self.buildspecLock.release()
 
     def _loadBuildspec(self):
-        makefiles = [ x.strip() for x in self.settings['makefile'].split(',') ]
+        source, ext = self._resolveActiveBuildspecSource()
+
+        if source == 'extension':
+            sections = ext.load_buildspec(self)
+            if sections is None:
+                self.log.error(
+                    "Extension buildspec flag '--%s' was set but produced "
+                    "no content.", ext.BUILDSPEC_FLAG)
+                return False
+            self.injectBuildspec(sections)
+            return True
+
+        makefiles = [x.strip() for x in self.settings['makefile'].split(',')]
         wasErrors = False
         for makefile in makefiles:
             wasErrors = self.includeBuildspec(makefile) and wasErrors
@@ -1048,10 +1209,143 @@ class CliDriver(object):
 
         os._exit(returncode)
 
+    def _discoverExtensions(self):
+        """Scan sys.path for CsmakeModules/*Extension.py and load them.
+
+        Each *Extension.py is expected to call
+        CliDriver.register_extension(MyExtensionClass) at module level,
+        which fires when the file is imported here.  After all extension
+        modules have been loaded, any settings they declare are injected
+        into self.settings so that _getOptions() can parse them from the
+        command line.
+        """
+        import glob
+        import importlib.util as _ilu
+
+        seen = set()
+
+        def _load_ext(ext_path):
+            """Load a single Extension__*.py file if not already loaded."""
+            if ext_path in seen:
+                return
+            seen.add(ext_path)
+            mod_name = 'CsmakeModules.' + os.path.basename(ext_path)[:-3]
+            if mod_name in sys.modules:
+                return
+            try:
+                spec = _ilu.spec_from_file_location(mod_name, ext_path)
+                mod  = _ilu.module_from_spec(spec)
+                sys.modules[mod_name] = mod
+                spec.loader.exec_module(mod)
+            except Exception as e:
+                self.log.debug(
+                    "Could not load csmake extension %s: %s",
+                    ext_path, str(e))
+
+        for base in sys.path:
+            if not base:
+                base = os.getcwd()
+
+            # Direct scan: <base>/CsmakeModules/Extension__*.py
+            for ext_path in sorted(glob.glob(
+                    os.path.join(base, 'CsmakeModules', 'Extension__*.py'))):
+                _load_ext(ext_path)
+
+            # Subdirectory scan: <base>/<subdir>/CsmakeModules/Extension__*.py
+            # Mirrors _constructModulePaths() so extensions in installed
+            # packages (e.g. site-packages/CsmakeGHActions/CsmakeModules/)
+            # are found even when only the parent is on sys.path.
+            try:
+                for subdir in sorted(os.listdir(base)):
+                    for ext_path in sorted(glob.glob(
+                            os.path.join(base, subdir,
+                                         'CsmakeModules', 'Extension__*.py'))):
+                        _load_ext(ext_path)
+            except OSError:
+                pass
+
+        # After all modules have self-registered, add their settings so
+        # _getOptions() sees the new flags during argument parsing.
+        for ext in self._extensions:
+            get_settings = getattr(ext, 'get_settings', None)
+            if callable(get_settings):
+                self.addOptions('', ext.get_settings())
+
+    def _resolveActiveBuildspecSource(self):
+        """Return ('extension', ext_class) or ('makefile', None).
+
+        Scans sys.argv left-to-right to find the last buildspec flag
+        (--makefile, --csmakefile, or any extension BUILDSPEC_FLAG).
+        When both a makefile flag and an extension flag are present,
+        the last one wins and a warning is emitted.
+        """
+        ext_flag_map = {
+            '--' + ext.BUILDSPEC_FLAG: ext
+            for ext in self._extensions
+            if getattr(ext, 'BUILDSPEC_FLAG', None)
+        }
+
+        if not ext_flag_map:
+            return ('makefile', None)
+
+        makefile_flags = {'--makefile', '--csmakefile'}
+        all_flags      = makefile_flags | set(ext_flag_map.keys())
+
+        last_source  = None   # ('makefile', None) | ('extension', ext)
+        saw_makefile = False
+        saw_extension = False
+
+        for arg in sys.argv[1:]:
+            flag = arg.split('=')[0]
+            if flag in makefile_flags:
+                last_source  = ('makefile', None)
+                saw_makefile = True
+            elif flag in ext_flag_map:
+                last_source  = ('extension', ext_flag_map[flag])
+                saw_extension = True
+
+        if saw_makefile and saw_extension:
+            if last_source[0] == 'extension':
+                flag_used = '--' + last_source[1].BUILDSPEC_FLAG
+                self.log.warning(
+                    "Both --makefile and %s were specified; "
+                    "using %s (appeared last on command line)",
+                    flag_used, flag_used)
+            else:
+                self.log.warning(
+                    "Both an extension buildspec flag and --makefile were "
+                    "specified; using --makefile (appeared last on command line)")
+
+        return last_source or ('makefile', None)
+
     def realmain(self):
         self._getCurrentProcesses()
+        # Seed sys.path from lazily-downloaded .csm packages so that both
+        # extension discovery and module loading see them without any network
+        # access (installed packages already live on sys.path via the
+        # system packaging).
+        try:
+            from .ModuleRegistry import ModuleRegistry
+            ModuleRegistry().seed_sys_path()
+        except Exception as _e:
+            import logging as _logging
+            _logging.getLogger(__name__).debug(
+                "ModuleRegistry.seed_sys_path failed (non-fatal): %s", _e)
+        self._discoverExtensions()
         self._getOptions()
         self._executeOptions()
+
+        # Structured --list-type(s) output (json/yaml) must own stdout, so
+        # silence logging before any startup chatter (e.g. a missing default
+        # csmakefile) can leak into the emitted document.  Guarded so drivers
+        # that do not define the setting keep the historical behavior.
+        try:
+            if self.settings['list-type-format'] != 'text' and (
+                    self.settings['list-types']
+                    or self.settings['list-type'] is not None):
+                self.log.forceQuiet()
+        except Exception:
+            pass
 
         result = None
 
@@ -1098,6 +1392,34 @@ class CliDriver(object):
                                   self.log)
         else:
             self.phasesDecl = phases.phases(None, self.log)
+
+        # Load the active (or explicitly --generation-selected) cache
+        # generation's pins first -- lowest priority: [~~packages~~]
+        # below, and any section's own **uses, both win over these.  A
+        # generation is just another pin source (see Generations.py /
+        # docs/MODULE_ECOSYSTEM_DESIGN.md).
+        try:
+            from .Generations import Generations
+            generations = Generations()
+            generationName = self.settings['generation']
+            if generationName is None:
+                generationName = generations.current_name()
+            if generationName is not None:
+                manifest = generations.get(generationName)
+                if manifest is not None:
+                    self._packagePins.update(manifest.get('packages', {}))
+                else:
+                    self.log.warning(
+                        "Generation '%s' not found", generationName)
+        except Exception as _e:
+            self.log.debug("Generation pin loading skipped: %s", _e)
+
+        # Load ambient package pins: [~~packages~~] pkgname=version, the
+        # spec-level default consulted when a section has no **uses of its
+        # own.  See docs/MODULE_ECOSYSTEM_DESIGN.md.
+        if self.buildspec.has_section('~~packages~~'):
+            for pkgname, version in self.buildspec.items('~~packages~~'):
+                self._packagePins[pkgname] = version.strip()
 
         #Inclusions could be added here, though it might be better to just
 
@@ -1392,7 +1714,103 @@ class CliDriver(object):
         self.modulePathConstruct = allPaths
         return allPaths
 
-    def _loadModules(self, target = ''):
+    def _pinnedPackageRoot(self, pkgname, version):
+        """Return the on-disk root for pkgname@version, installing it via
+        the module registry first if it isn't already cached.  Returns
+        None if it can't be resolved (a warning is logged by the caller).
+
+        A freshly-triggered install re-seeds sys.path: if this pin's
+        version turns out to be the greatest one now cached for pkgname,
+        an unpinned section elsewhere in the same build should see it too
+        ("greatest version among **uses pins, when no ambient pin exists"
+        -- see docs/MODULE_ECOSYSTEM_DESIGN.md). seed_sys_path() re-scans
+        the cache fresh each call and only inserts paths not already on
+        sys.path, so this is safe to call repeatedly. _constructModulePaths
+        memoizes its result from sys.path, so that cache must be dropped
+        too -- otherwise a later unpinned lookup keeps using the path list
+        computed before this install happened (mirrors how the existing
+        registry-autoload fallback below already invalidates it after
+        appending a freshly-downloaded module's own path).
+        """
+        root = os.path.join(
+            os.path.expanduser('~/.csmake/modules'), pkgname, version)
+        if os.path.isdir(root):
+            return root
+        from .ModuleRegistry import ModuleRegistry
+        registry = ModuleRegistry(self.settings)
+        installed = registry.install(pkgname, version=version)
+        if installed:
+            registry.seed_sys_path()
+            self.modulePathConstruct = None
+        return installed
+
+    def _loadPinnedModule(self, target, pin):
+        """Try to load *target* specifically from pin=(pkgname, version)'s
+        own cached root.  Returns ([], []) if that package doesn't provide
+        *target* -- the caller falls through to the normal unpinned search
+        in that case (covers core-shipped and third-party dependencies a
+        pinned package relies on, e.g. a packaging module subclassing
+        core's Packager).
+
+        Loaded modules are cached and returned under a mangled sys.modules
+        key private to this (target, package, version) triple -- distinct
+        from the bare slot other, unpinned code sees, so pinned loads are
+        strictly additive and never shadow anything.
+        """
+        pkgname, version = pin
+        root = self._pinnedPackageRoot(pkgname, version)
+        if root is None:
+            self.log.warning(
+                "**uses %s@%s: could not resolve; falling back to "
+                "unpinned resolution for '%s'", pkgname, version, target)
+            return [], []
+
+        packagePath = "%s/CsmakeModules" % root
+        modulePath = "%s/%s.py" % (packagePath, target)
+        if not os.path.isfile(modulePath):
+            return [], []
+
+        mangledName = "%s@@%s@@%s" % (target, pkgname, version)
+
+        imp.acquire_lock()
+        try:
+            existing = sys.modules.get(mangledName)
+        finally:
+            imp.release_lock()
+        if existing is not None:
+            actualModule = existing.__dict__.get(target)
+            return [(packagePath, target, existing, actualModule)], []
+
+        warnings = []
+        self._pinContext.append(pin)
+        try:
+            imp.acquire_lock()
+            try:
+                module = imp.load_source(mangledName, modulePath)
+                sys.modules[mangledName] = module
+            finally:
+                imp.release_lock()
+        except Exception as e:
+            trbk = traceback.format_exc()
+            warnings.append(self._reportLoadModuleError(target, packagePath, e, trbk))
+            return [], warnings
+        finally:
+            self._pinContext.pop()
+
+        actualModule = None
+        try:
+            actualModule = module.__dict__[target]
+            if isinstance(actualModule, types.ModuleType):
+                actualModule = actualModule.__dict__[target]
+        except Exception:
+            warnings.append([
+                "There is a naming problem with module '%s'" % target])
+            self.log.exception(
+                "There was a naming problem with module '%s'", target)
+
+        return [(packagePath, target, module, actualModule)], warnings
+
+    def _loadModules(self, target = '', pin=None):
         """Yes, this is a custom import routine to avoid the manner in
            which python deals with packages broken across paths.
            In csmake we want to support the notion of being able to
@@ -1405,7 +1823,24 @@ class CliDriver(object):
            write fragile package path patching code that could break
            the normal functioning of csmake.
 
+           pin, when given, is a (package, version) tuple (see
+           _parsePin/**uses).  The pinned package's own cached root is
+           tried FIRST; if it doesn't provide *target*, resolution falls
+           through to the normal search below unchanged -- "pinned
+           package, then core, then bare" from
+           docs/MODULE_ECOSYSTEM_DESIGN.md.  A pinned load never touches
+           the bare sys.modules slot, so with pin=None (always true
+           unless something is actually pinned) this method's behavior is
+           unchanged from before pins existed.
+
            returns [(path, name, module)], [warnings]"""
+
+        if pin is not None:
+            pinnedModules, pinnedWarnings = self._loadPinnedModule(target, pin)
+            if pinnedModules:
+                return pinnedModules, pinnedWarnings
+            # Not provided by the pinned package -- fall through to the
+            # normal (core / bare) search below.
 
         allPaths = self._constructModulePaths()
 
@@ -1502,12 +1937,115 @@ class CliDriver(object):
                 if found and stopOnFoundOrFail:
                     self.log.devdebug("Module '%s' was found", target)
                     return (modules, warnings)
+
+        # Nothing found locally — try auto-downloading via the module registry
+        if len(modules) == 0 and target and target not in self._remoteModulesAttempted:
+            self._remoteModulesAttempted.add(target)
+            from .ModuleRegistry import ModuleRegistry
+            registry = ModuleRegistry(self.settings)
+            # Ambient [~~packages~~] pins only matter for what gets fetched
+            # here -- a dev checkout / --modules-path entry (layer zero,
+            # versionless) already won above if it had *target*, and this
+            # branch only runs when nothing local provided it.
+            remote_path = registry.find(
+                target, pinned_versions=self._packagePins or None)
+            if remote_path:
+                self.log.devdebug(
+                    "Remote module '%s' downloaded to '%s'", target, remote_path)
+                self.modulePaths.append(remote_path)
+                self.modulePathConstruct = None
+                return self._loadModules(target)
+
         return (modules, warnings)
 
-    def getSectionTypeInstance(self, target, logger=None):
+    def _preflightCheck(self, target, moduleClass):
+        """Report on a section's declared system requirements before it
+        runs -- knows and tells, never installs.  A module declares what
+        it needs via a docstring 'Requires:' field (exec:/caps:, parsed
+        by ModuleDoc); exec names are checked against PATH, caps names
+        against any registered checker (register_prereq_checker).  An
+        unregistered cap is reported as declared-but-unverifiable, which
+        is distinct from a checked, failing one and never escalates.
+
+        By default this only warns.  --strict-prereqs escalates a missing
+        exec or a failing (checked) cap to a hard failure -- raises, so
+        the caller's own exception handling reports it.  See
+        docs/MODULE_ECOSYSTEM_DESIGN.md.
+        """
+        docstring = getattr(moduleClass, '__doc__', None)
+        if not docstring:
+            return
+        requires = ModuleDoc.parse_module_doc(target, docstring)['requires']
+        if not requires['exec'] and not requires['caps']:
+            return
+
+        try:
+            strict = bool(self.settings['strict-prereqs'])
+        except Exception:
+            strict = False
+
+        missing_exec = [
+            name for name in requires['exec'] if shutil.which(name) is None]
+        failing_caps = []
+        unverifiable_caps = []
+        for capname in requires['caps']:
+            checker = self._prereqCheckers.get(capname)
+            if checker is None:
+                unverifiable_caps.append(capname)
+                continue
+            try:
+                ok = bool(checker())
+            except Exception:
+                self.log.exception(
+                    "Prereq checker for capability '%s' raised", capname)
+                ok = False
+            if not ok:
+                failing_caps.append(capname)
+
+        if not missing_exec and not failing_caps and not unverifiable_caps:
+            return
+
+        platform = SystemPackageHints.detect_platform()
+        report = (self.log.error if strict else self.log.warning)
+        for name in missing_exec:
+            hint = SystemPackageHints.hint_for(name, platform)
+            message = "Section '%s' declares it needs '%s', not found on PATH" % (
+                target, name)
+            if hint:
+                message += " (try installing '%s')" % hint
+            report(message)
+        for capname in failing_caps:
+            report(
+                "Section '%s' declares capability '%s', which is not "
+                "available" % (target, capname))
+        for capname in unverifiable_caps:
+            self.log.info(
+                "Section '%s' declares capability '%s' -- no checker "
+                "registered for it, unverifiable" % (target, capname))
+
+        if strict and (missing_exec or failing_caps):
+            raise RuntimeError(
+                "--strict-prereqs: section '%s' is missing requirements: %s"
+                % (target, ', '.join(missing_exec + failing_caps)))
+
+    def getSectionTypeInstance(self, target, logger=None, pin=None):
         if logger is None:
             logger = Result(self.env, self.log.info)
-        modules, warnings = self._loadModules(target)
+        # Python's own import machinery auto-populates sys.modules under
+        # the dotted 'CsmakeModules.<Name>' key as a side effect of the
+        # legacy find_module/load_module loader protocol -- purely its
+        # own bookkeeping; nothing in this class ever reads that key (our
+        # caches are the bare CsmakeModulesModule dict, for the unpinned
+        # case, and a pin-mangled sys.modules key, for a pinned one). Left
+        # alone, that auto-cache short-circuits Python's import statement
+        # before load_module() is even called again, so a PREVIOUS
+        # section's pin could leak into a later section with a different
+        # (or no) pin purely via Python's own caching. Clearing it once
+        # per section dispatch is safe (we never rely on it for anything)
+        # and forces every section to resolve fresh.
+        for key in [k for k in sys.modules if k.startswith('CsmakeModules.')]:
+            del sys.modules[key]
+        modules, warnings = self._loadModules(target, pin=pin)
         if len(warnings) != 0:
             self.log.info("There were problems loading '%s'" % target)
             for warning in warnings:
@@ -1525,6 +2063,19 @@ class CliDriver(object):
             result = module.__dict__[target]
             if isinstance(result, types.ModuleType):
                 result = result.__dict__[target]
+        except Exception as e:
+            result = None
+
+        if result is not None:
+            # Distinct from the "improperly constructed" handling below:
+            # the class resolved fine, this is about whether it's safe to
+            # RUN, so --strict-prereqs failures get their own clear
+            # message rather than being folded into a construction error.
+            self._preflightCheck(target, result)
+
+        try:
+            if result is None:
+                raise e
             instance = result(self.environment, logger)
             return instance
         except Exception as e:

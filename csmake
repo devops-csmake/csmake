@@ -17,13 +17,30 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # </copyright>
 
+import os.path
+import sys
+
+# Installed packages relocate CsmakeCore away from python's default path
+# (Homebrew keg: bin/ + libexec/, macOS pkg: bin/ + lib/python3/dist-packages).
+# Self-locate relative to the real launcher path so any installer can simply
+# lay the tree under a prefix.  Checkouts and dist-packages installs resolve
+# CsmakeCore without help and skip this entirely.
+try:
+    import CsmakeCore
+except ImportError:
+    _launcherdir = os.path.dirname(os.path.realpath(__file__))
+    for _libpath in ('../libexec', '../lib/python3/dist-packages'):
+        _candidate = os.path.normpath(os.path.join(_launcherdir, _libpath))
+        if os.path.isdir(os.path.join(_candidate, 'CsmakeCore')):
+            sys.path.insert(0, _candidate)
+            break
+
 try:
     from configparser import SafeConfigParser
 except:
     from configparser import ConfigParser as SafeConfigParser
 from CsmakeCore.Settings import Settings
 from CsmakeCore.CliDriver import CliDriver
-import sys
 
 CSMAKE_SETTINGS={
     "help": [
@@ -54,6 +71,71 @@ CSMAKE_SETTINGS={
         None,
         """Displays help for the given module (section type) name""",
         False],
+    "list-type-format" : [
+        "text",
+        """Output format for --list-type and --list-types
+
+           One of:
+             text - (default) human-readable, identical to historical output
+             json - structured JSON parsed from the module documentation
+             yaml - structured YAML (the same data as json)
+
+           The structured formats emit the documentation straight from the
+           modules (the module __doc__ "semi-YAML" standard described in
+           docs/MODULE_DOC_SCHEMA.md) so tooling and the documentation website
+           can consume module docs without re-parsing Python source.
+
+           Each module becomes an object with: name, summary, type, library,
+           implements, phases, options, examples, the ordered/faithful fields,
+           and 'raw' (byte-for-byte what the text format prints).""",
+        False,
+        "Format for --list-type(s): text|json|yaml"],
+    "strict-prereqs" : [
+        False,
+        """Fail the build if a section's declared system requirements
+           are missing or unverifiable, instead of only warning.
+
+           A module declares what it shells out to via a 'Requires:'
+           field in its docstring (exec: and/or caps: entries); a
+           csmakefile can supplement this per-spec via **requires= in
+           [~~phases~~]. Before each section runs, csmake checks its
+           declared exec names against PATH and its declared caps
+           against any registered capability checkers, and reports what
+           it finds -- it never installs anything. By default this is
+           only a warning; --strict-prereqs makes it a hard failure.""",
+        True,
+        "Fail on missing/unverifiable section requirements"],
+    "generation" : [
+        None,
+        """Selects a cache generation to resolve package pins from.
+
+           A generation is a named, immutable snapshot of package
+           versions (~/.csmake/generations/<name>.json), created with
+           the GenerationRemaster module and activated with
+           GenerationPromote. By default the generation named by
+           ~/.csmake/generations/current is used, if any; this option
+           overrides that for a single run (e.g. to test a freshly
+           remastered generation before promoting it).
+
+           A generation's pins apply only to packages not already
+           pinned by [~~packages~~] or a section's own **uses -- same
+           priority as the ambient [~~packages~~] pin, one layer lower.""",
+        False,
+        "Cache generation to resolve package pins from"],
+    "frozen" : [
+        False,
+        """Fail closed instead of reaching the network for module
+           resolution: a package not already present in the local
+           module cache (~/.csmake/modules/) is a hard build failure
+           naming exactly what's missing, rather than a live fetch.
+
+           For reproducible builds against a walled garden or a
+           promoted generation -- everything the build needs should
+           already be in the cache (see MirrorSync / GenerationRemaster);
+           --frozen makes it a build failure, not a surprise, when
+           something isn't.""",
+        True,
+        "Fail closed instead of fetching over the network"],
     "list-commands" : [
         False,
         """Displays all of the available commands

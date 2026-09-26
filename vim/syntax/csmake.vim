@@ -40,8 +40,9 @@ syn case ignore
 syn match  csmakeNumber   "\<\d\+\>"
 syn match  csmakeNumber   "\<\d*\.\d\+\>"
 syn match  csmakeNumber   "\<\d\+e[+-]\=\d\+\>"
-syn match  csmakeLabel    "^[^*	 ].*="
+syn match  csmakeLabel    "^[^*\t ].*="
 syn match  csmakeSystemLabel "^\*\*.*="
+syn match  csmakeId       "@[^\]]*" contained
 syn region csmakeHeader   start="^\s*\[" end="\]" contains=csmakeId
 syn match  csmakeComment  "^[#;].*$"
 

@@ -1,6 +1,81 @@
-How to build the csmake package:
-./csmake clean package
+Building csmake packages from a checkout
+========================================
 
-see:
-./csmake --list-phases
-for more help
+Debian / Ubuntu
+---------------
+The Debian packager ships with csmake core, so a bare checkout is enough:
+
+    ./csmake clean package
+
+The .deb lands in target/.
+
+See:
+    ./csmake --list-phases
+    ./csmake --list-commands
+for more help.
+
+
+Non-Debian platforms (macOS, RPM, signed packages)
+--------------------------------------------------
+The other packagers live in two sibling libraries:
+
+    csmake-packaging - RpmPackage, HomebrewFormula, HomebrewBottle,
+                       HomebrewCask, ApplePackage, WheelPackage, ...
+    csmake-swak      - Signature, AsciiGPGSignature (needed for the
+                       'signed' command), and other helpers
+
+Clone them next to this checkout:
+
+    git clone https://github.com/devops-csmake/csmake-swak
+    git clone https://github.com/devops-csmake/csmake-packaging
+
+and put them on the modules path when you build.  NOTE the leading ':' --
+it appends to the default search path ('+local:+path'); without it the
+default path (and with it csmake's own core modules) is replaced:
+
+    ./csmake --modules-path=':../csmake-swak:../csmake-packaging' \
+        --command=<packaging-command> clean package
+
+Packaging commands defined in this csmakefile:
+
+    homebrew-only    - Homebrew formula (.rb) + source tarball
+    homebrew-bottle  - Homebrew bottle archive + formula
+    homebrew-cask    - Homebrew cask wrapping the .pkg installer
+    apple-only       - macOS .pkg installer
+    signed           - signed .deb and .rpm (also needs GPG keys)
+
+Results land under target/ (e.g. target/homebrew/, target/applepkg/).
+
+Installing the Homebrew build locally
+-------------------------------------
+Current Homebrew requires formulae to live in a tap; standalone .rb
+files are rejected.  One-time setup:
+
+    brew tap-new devops-csmake/local --no-git
+
+Then after each build:
+
+    cp target/homebrew/csmake.rb \
+       "$(brew --repository)/Library/Taps/devops-csmake/homebrew-local/Formula/"
+    brew install devops-csmake/local/csmake     (or: brew reinstall)
+
+The generated formula's url points at the local tarball (file://...), so
+no network hosting is needed for a local install.
+
+Module autoloading (where this is headed)
+-----------------------------------------
+csmake can lazily download module libraries from the csmake-registry
+(https://github.com/devops-csmake/csmake-registry) into ~/.csmake/modules
+when a section type is not found locally.  Once csmake-swak and
+csmake-packaging publish .csm releases to the registry, the
+--modules-path wiring above becomes unnecessary: a bare csmake install
+resolves the packaging modules on first use, on any platform.
+
+
+Testing
+-------
+    ./csmake --command=test test
+
+runs the unit test suite (file tracking, csmake modules, secrets,
+module docs, launcher bootstrap).  RUNTESTS.sh runs the full spec-test
+suite (Linux; requires python coverage).
